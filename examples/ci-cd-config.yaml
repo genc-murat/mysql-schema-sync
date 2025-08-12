@@ -1,0 +1,43 @@
+# CI/CD MySQL Schema Sync Configuration
+# Designed for automated deployment pipelines
+
+source:
+  host: staging-db.example.com
+  port: 3306
+  username: ci_user
+  password: ""  # Set via MYSQL_SCHEMA_SYNC_SOURCE_PASSWORD
+  database: app_staging
+  timeout: 45s
+
+target:
+  host: prod-db.example.com
+  port: 3306
+  username: ci_user
+  password: ""  # Set via MYSQL_SCHEMA_SYNC_TARGET_PASSWORD
+  database: app_production
+  timeout: 45s
+
+# CI/CD optimized settings
+dry_run: false          # Apply changes automatically
+verbose: true           # Detailed logging for audit trail
+quiet: false            # Keep informational output
+auto_approve: true      # Automatic approval for CI/CD
+timeout: 60s            # Extended timeout for reliability
+log_file: "/tmp/schema-sync-ci.log"  # Temporary log file
+
+# CI/CD Best Practices:
+# 1. Always test schema changes in staging first
+# 2. Use dedicated CI/CD database users with limited privileges
+# 3. Implement proper error handling in your pipeline
+# 4. Archive log files for audit purposes
+# 5. Consider running dry-run in a separate pipeline step first
+# 6. Set up monitoring and alerts for failed synchronizations
+
+# Environment Variables Required:
+# - MYSQL_SCHEMA_SYNC_SOURCE_PASSWORD
+# - MYSQL_SCHEMA_SYNC_TARGET_PASSWORD
+
+# Example CI/CD Pipeline Step:
+# script:
+#   - mysql-schema-sync --config=ci-cd-config.yaml --dry-run  # Preview step
+#   - mysql-schema-sync --config=ci-cd-config.yaml            # Apply step

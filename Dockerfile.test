@@ -1,0 +1,22 @@
+FROM golang:1.21-alpine
+
+# Install necessary packages
+RUN apk add --no-cache git mysql-client
+
+# Set working directory
+WORKDIR /app
+
+# Copy go mod files
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build the application
+RUN go build -o mysql-schema-sync .
+
+# Default command for running tests
+CMD ["go", "test", "-v", "./...", "-tags=integration"]

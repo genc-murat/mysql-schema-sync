@@ -1,0 +1,32 @@
+# Production MySQL Schema Sync Configuration
+# This configuration includes all available options with production-ready settings
+
+source:
+  host: prod-db-source.example.com
+  port: 3306
+  username: schema_sync_user
+  password: ""  # Use environment variable: MYSQL_SCHEMA_SYNC_SOURCE_PASSWORD
+  database: production_app
+  timeout: 60s
+
+target:
+  host: prod-db-target.example.com
+  port: 3306
+  username: schema_sync_user
+  password: ""  # Use environment variable: MYSQL_SCHEMA_SYNC_TARGET_PASSWORD
+  database: production_app_replica
+  timeout: 60s
+
+# Operation settings for production use
+dry_run: false          # Set to true for initial testing
+verbose: true           # Enable detailed logging
+quiet: false            # Keep informational output
+auto_approve: false     # Always require manual approval in production
+timeout: 120s           # Extended timeout for large schemas
+log_file: "/var/log/mysql-schema-sync/sync.log"  # Centralized logging
+
+# Security Notes:
+# 1. Store passwords in environment variables, not in config files
+# 2. Use dedicated database users with minimal required privileges
+# 3. Consider using SSL connections for remote databases
+# 4. Restrict file permissions on this configuration file (chmod 600)

@@ -1,0 +1,15 @@
+  source:
+    host: 192.168.51.34
+    port: 3306
+    username: murat
+    password: Mur_1256
+    database: ana_claim
+  target:
+    host: 192.168.51.1
+    port: 3306
+    username: murat
+    password: Mur_1256
+    database: ana_claim
+  dry_run: false
+  verbose: false
+  auto_approve: false

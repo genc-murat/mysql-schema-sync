@@ -1,0 +1,52 @@
+# Build artifacts
+build/
+mysql-schema-sync
+mysql-schema-sync.exe
+*.exe
+
+# Test artifacts
+coverage.out
+coverage.html
+*.log
+
+# Development files
+.git/
+.github/
+.gitignore
+.dockerignore
+Dockerfile*
+docker-compose*.yml
+
+# Documentation (except examples)
+README.md
+CONTRIBUTING.md
+CHANGELOG.md
+LICENSE
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Configuration files with sensitive data
+config.yaml
+*.yaml
+*.yml
+!examples/*.yaml
+!examples/*.yml
+!docker-compose.test.yml
+
+# Test databases
+*.db
+*.sqlite

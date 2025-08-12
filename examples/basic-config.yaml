@@ -1,0 +1,21 @@
+# Basic MySQL Schema Sync Configuration
+# This is a minimal configuration for local development
+
+source:
+  host: localhost
+  port: 3306
+  username: root
+  password: ""
+  database: source_db
+
+target:
+  host: localhost
+  port: 3306
+  username: root
+  password: ""
+  database: target_db
+
+# Basic operation settings
+dry_run: false
+verbose: false
+auto_approve: false

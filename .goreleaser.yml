@@ -1,0 +1,188 @@
+# GoReleaser configuration for MySQL Schema Sync
+
+project_name: mysql-schema-sync
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+    - make test-unit
+
+builds:
+  - id: mysql-schema-sync
+    binary: mysql-schema-sync
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+      - -X main.BuildTime={{.Date}}
+      - -X main.GitCommit={{.ShortCommit}}
+      - -X main.GoVersion={{.Env.GO_VERSION}}
+    flags:
+      - -trimpath
+
+archives:
+  - id: mysql-schema-sync
+    name_template: "{{ .ProjectName }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE
+      - CHANGELOG.md
+      - examples/**/*
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - '^ci:'
+  groups:
+    - title: Features
+      regexp: "^.*feat[(\\w)]*:+.*$"
+      order: 0
+    - title: 'Bug fixes'
+      regexp: "^.*fix[(\\w)]*:+.*$"
+      order: 1
+    - title: Others
+      order: 999
+
+release:
+  github:
+    owner: your-org
+    name: mysql-schema-sync
+  draft: false
+  prerelease: auto
+  name_template: "Release {{.Version}}"
+  header: |
+    ## MySQL Schema Sync {{.Version}}
+    
+    This release includes the following changes:
+  footer: |
+    ## Installation
+    
+    ### Download Binary
+    Download the appropriate binary for your platform from the assets below.
+    
+    ### Using Go
+    ```bash
+    go install github.com/your-org/mysql-schema-sync@{{.Version}}
+    ```
+    
+    ### Using Docker
+    ```bash
+    docker pull mysql-schema-sync:{{.Version}}
+    ```
+    
+    ## Verification
+    All binaries are signed and checksums are provided in `checksums.txt`.
+
+brews:
+  - name: mysql-schema-sync
+    repository:
+      owner: your-org
+      name: homebrew-tap
+    folder: Formula
+    homepage: https://github.com/your-org/mysql-schema-sync
+    description: "CLI tool for synchronizing MySQL database schemas"
+    license: MIT
+    test: |
+      system "#{bin}/mysql-schema-sync version"
+    install: |
+      bin.install "mysql-schema-sync"
+      (etc/"mysql-schema-sync").install Dir["examples/*"]
+
+nfpms:
+  - id: mysql-schema-sync
+    package_name: mysql-schema-sync
+    vendor: MySQL Schema Sync Contributors
+    homepage: https://github.com/your-org/mysql-schema-sync
+    maintainer: MySQL Schema Sync Contributors <maintainers@example.com>
+    description: CLI tool for synchronizing MySQL database schemas
+    license: MIT
+    formats:
+      - deb
+      - rpm
+      - apk
+    bindir: /usr/bin
+    contents:
+      - src: examples/
+        dst: /usr/share/mysql-schema-sync/examples/
+        type: dir
+      - src: README.md
+        dst: /usr/share/doc/mysql-schema-sync/README.md
+        type: doc
+      - src: LICENSE
+        dst: /usr/share/doc/mysql-schema-sync/LICENSE
+        type: doc
+
+dockers:
+  - image_templates:
+      - "mysql-schema-sync:{{ .Version }}-amd64"
+      - "mysql-schema-sync:latest-amd64"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+  - image_templates:
+      - "mysql-schema-sync:{{ .Version }}-arm64"
+      - "mysql-schema-sync:latest-arm64"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+    goarch: arm64
+
+docker_manifests:
+  - name_template: "mysql-schema-sync:{{ .Version }}"
+    image_templates:
+      - "mysql-schema-sync:{{ .Version }}-amd64"
+      - "mysql-schema-sync:{{ .Version }}-arm64"
+  - name_template: "mysql-schema-sync:latest"
+    image_templates:
+      - "mysql-schema-sync:latest-amd64"
+      - "mysql-schema-sync:latest-arm64"
+
+signs:
+  - artifacts: checksum
+    args:
+      - "--batch"
+      - "--local-user"
+      - "{{ .Env.GPG_FINGERPRINT }}"
+      - "--output"
+      - "${signature}"
+      - "--detach-sign"
+      - "${artifact}"
+
+sboms:
+  - artifacts: archive
+  - id: source
+    artifacts: source

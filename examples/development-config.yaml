@@ -1,0 +1,32 @@
+# Development MySQL Schema Sync Configuration
+# Optimized for development workflow with safety features enabled
+
+source:
+  host: dev-db.example.com
+  port: 3306
+  username: developer
+  password: dev_password
+  database: app_staging
+  timeout: 30s
+
+target:
+  host: localhost
+  port: 3306
+  username: root
+  password: local_password
+  database: app_local
+  timeout: 30s
+
+# Development-friendly settings
+dry_run: true           # Always preview changes first in development
+verbose: true           # Show detailed information
+quiet: false            # Keep all output for debugging
+auto_approve: false     # Always review changes manually
+timeout: 30s            # Standard timeout for development
+log_file: "schema-sync-dev.log"  # Local log file
+
+# Development Workflow:
+# 1. Run with dry_run: true to preview changes
+# 2. Review the proposed changes carefully
+# 3. Set dry_run: false and run again to apply changes
+# 4. Test your application with the updated schema
