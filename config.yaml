@@ -13,3 +13,12 @@
   dry_run: false
   verbose: false
   auto_approve: false
+  display:
+    color_enabled: true      # Enable colorized output
+    theme: dark              # Color theme (dark, light, high-contrast, auto)
+    output_format: table     # Output format (table, json, yaml, compact)
+    use_icons: true          # Enable Unicode icons with ASCII fallbacks
+    show_progress: true      # Show progress indicators and spinners
+    interactive: true        # Enable interactive confirmations
+    table_style: default     # Table styling (default, rounded, border, minimal)
+    max_table_width: 120     # Maximum table width (40-300)

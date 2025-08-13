@@ -27,6 +27,26 @@ type Service struct {
 	retryDelay        time.Duration
 	logger            *logging.Logger
 	retryHandler      *errors.RetryHandler
+	displayService    DisplayService
+}
+
+// DisplayService interface for visual enhancements (to avoid circular imports)
+type DisplayService interface {
+	StartSpinner(message string) SpinnerHandle
+	UpdateSpinner(handle SpinnerHandle, message string)
+	StopSpinner(handle SpinnerHandle, finalMessage string)
+	ShowProgress(current, total int, message string)
+	Success(message string)
+	Warning(message string)
+	Error(message string)
+	Info(message string)
+	RenderIconWithColor(name string) string
+}
+
+// SpinnerHandle interface for spinner management
+type SpinnerHandle interface {
+	ID() string
+	IsActive() bool
 }
 
 // NewService creates a new database service with default settings
@@ -37,6 +57,7 @@ func NewService() *Service {
 		retryDelay:        2 * time.Second,
 		logger:            logging.NewDefaultLogger(),
 		retryHandler:      errors.NewDefaultRetryHandler(),
+		displayService:    nil, // Will be set via SetDisplayService
 	}
 }
 
@@ -55,6 +76,7 @@ func NewServiceWithOptions(timeout time.Duration, maxRetries int, retryDelay tim
 		retryDelay:        retryDelay,
 		logger:            logging.NewDefaultLogger(),
 		retryHandler:      errors.NewRetryHandler(retryConfig),
+		displayService:    nil, // Will be set via SetDisplayService
 	}
 }
 
@@ -66,7 +88,13 @@ func NewServiceWithLogger(logger *logging.Logger) *Service {
 		retryDelay:        2 * time.Second,
 		logger:            logger,
 		retryHandler:      errors.NewDefaultRetryHandler(),
+		displayService:    nil, // Will be set via SetDisplayService
 	}
+}
+
+// SetDisplayService sets the display service for visual enhancements
+func (s *Service) SetDisplayService(displayService DisplayService) {
+	s.displayService = displayService
 }
 
 // Connect establishes a connection to the MySQL database with retry logic
@@ -79,12 +107,30 @@ func (s *Service) Connect(config DatabaseConfig) (*sql.DB, error) {
 		"port":     config.Port,
 	}).Info("Attempting database connection")
 
+	// Start spinner if display service is available
+	var spinner SpinnerHandle
+	if s.displayService != nil {
+		connectionMsg := fmt.Sprintf("Connecting to %s@%s:%d...", config.Database, config.Host, config.Port)
+		spinner = s.displayService.StartSpinner(connectionMsg)
+	}
+
 	ctx, cancel := errors.CreateContextWithTimeout(s.connectionTimeout)
 	defer cancel()
 
 	var db *sql.DB
+	attempt := 0
 	err := s.retryHandler.Retry(ctx, func() error {
+		attempt++
 		var connectErr error
+
+		// Update spinner with retry information
+		if s.displayService != nil && spinner != nil {
+			if attempt > 1 {
+				retryMsg := fmt.Sprintf("Connecting to %s@%s:%d (attempt %d/%d)...",
+					config.Database, config.Host, config.Port, attempt, s.maxRetries)
+				s.displayService.UpdateSpinner(spinner, retryMsg)
+			}
+		}
 
 		dsn := config.DSN()
 		db, connectErr = sql.Open("mysql", dsn)
@@ -109,9 +155,28 @@ func (s *Service) Connect(config DatabaseConfig) (*sql.DB, error) {
 	duration := time.Since(startTime)
 	success := err == nil
 
+	// Stop spinner and show result
+	if s.displayService != nil && spinner != nil {
+		if success {
+			successMsg := fmt.Sprintf("%s Connected to %s@%s:%d successfully (%.2fs)",
+				s.displayService.RenderIconWithColor("success"),
+				config.Database, config.Host, config.Port, duration.Seconds())
+			s.displayService.StopSpinner(spinner, successMsg)
+		} else {
+			errorMsg := fmt.Sprintf("%s Failed to connect to %s@%s:%d after %d attempts",
+				s.displayService.RenderIconWithColor("error"),
+				config.Database, config.Host, config.Port, attempt)
+			s.displayService.StopSpinner(spinner, errorMsg)
+		}
+	}
+
 	s.logger.LogDatabaseConnection(config.Host, config.Database, success, duration, err)
 
 	if err != nil {
+		// Show enhanced error message
+		if s.displayService != nil {
+			s.displayService.Error(fmt.Sprintf("Database connection failed: %v", err))
+		}
 		return nil, err
 	}
 
@@ -121,7 +186,11 @@ func (s *Service) Connect(config DatabaseConfig) (*sql.DB, error) {
 // TestConnection verifies that the database connection is working
 func (s *Service) TestConnection(db *sql.DB) error {
 	if db == nil {
-		return errors.NewAppError(errors.ErrorTypeValidation, "database connection is nil", nil)
+		err := errors.NewAppError(errors.ErrorTypeValidation, "database connection is nil", nil)
+		if s.displayService != nil {
+			s.displayService.Error("Database connection is nil")
+		}
+		return err
 	}
 
 	// Create a context with timeout for the ping
@@ -130,7 +199,11 @@ func (s *Service) TestConnection(db *sql.DB) error {
 
 	// Test the connection
 	if err := db.PingContext(ctx); err != nil {
-		return errors.WrapError(err, "failed to ping database")
+		wrappedErr := errors.WrapError(err, "failed to ping database")
+		if s.displayService != nil {
+			s.displayService.Error(fmt.Sprintf("Database ping failed: %v", err))
+		}
+		return wrappedErr
 	}
 
 	s.logger.Debug("Database connection test successful")
@@ -183,20 +256,36 @@ func (s *Service) GetVersion(db *sql.DB) (string, error) {
 // ExecuteSQL executes SQL statements with proper logging and error handling
 func (s *Service) ExecuteSQL(db *sql.DB, statements []string) error {
 	if db == nil {
-		return errors.NewAppError(errors.ErrorTypeValidation, "database connection is nil", nil)
+		err := errors.NewAppError(errors.ErrorTypeValidation, "database connection is nil", nil)
+		if s.displayService != nil {
+			s.displayService.Error("Database connection is nil")
+		}
+		return err
 	}
 
 	if len(statements) == 0 {
 		s.logger.Debug("No SQL statements to execute")
+		if s.displayService != nil {
+			s.displayService.Info("No SQL statements to execute")
+		}
 		return nil
 	}
 
 	s.logger.WithField("statement_count", len(statements)).Info("Executing SQL statements")
 
+	// Show progress indicator for SQL execution
+	if s.displayService != nil {
+		s.displayService.Info(fmt.Sprintf("Executing %d SQL statements...", len(statements)))
+	}
+
 	// Start a transaction for atomic execution
 	tx, err := db.Begin()
 	if err != nil {
-		return errors.WrapError(err, "failed to begin transaction")
+		wrappedErr := errors.WrapError(err, "failed to begin transaction")
+		if s.displayService != nil {
+			s.displayService.Error(fmt.Sprintf("Failed to begin transaction: %v", err))
+		}
+		return wrappedErr
 	}
 
 	// Ensure transaction is rolled back on error
@@ -204,13 +293,22 @@ func (s *Service) ExecuteSQL(db *sql.DB, statements []string) error {
 		if err != nil {
 			if rollbackErr := tx.Rollback(); rollbackErr != nil {
 				s.logger.WithField("error", rollbackErr.Error()).Error("Failed to rollback transaction")
+				if s.displayService != nil {
+					s.displayService.Error(fmt.Sprintf("Failed to rollback transaction: %v", rollbackErr))
+				}
 			}
 		}
 	}()
 
+	executed := 0
 	for i, stmt := range statements {
 		if stmt == "" {
 			continue
+		}
+
+		// Show progress
+		if s.displayService != nil {
+			s.displayService.ShowProgress(i+1, len(statements), fmt.Sprintf("Executing statement %d/%d", i+1, len(statements)))
 		}
 
 		startTime := time.Now()
@@ -226,15 +324,27 @@ func (s *Service) ExecuteSQL(db *sql.DB, statements []string) error {
 
 		if execErr != nil {
 			err = errors.WrapError(execErr, fmt.Sprintf("failed to execute statement %d", i+1)).(*errors.AppError).WithContext("statement", stmt).WithContext("statement_index", i)
+			if s.displayService != nil {
+				s.displayService.Error(fmt.Sprintf("SQL execution failed at statement %d: %v", i+1, execErr))
+			}
 			return err
 		}
+		executed++
 	}
 
 	// Commit the transaction
 	if err = tx.Commit(); err != nil {
-		return errors.WrapError(err, "failed to commit transaction")
+		wrappedErr := errors.WrapError(err, "failed to commit transaction")
+		if s.displayService != nil {
+			s.displayService.Error(fmt.Sprintf("Failed to commit transaction: %v", err))
+		}
+		return wrappedErr
 	}
 
 	s.logger.WithField("statement_count", len(statements)).Info("All SQL statements executed successfully")
+	if s.displayService != nil {
+		s.displayService.Success(fmt.Sprintf("%s Successfully executed %d SQL statements",
+			s.displayService.RenderIconWithColor("success"), executed))
+	}
 	return nil
 }

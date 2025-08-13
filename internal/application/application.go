@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"mysql-schema-sync/internal/database"
+	"mysql-schema-sync/internal/display"
 	appErrors "mysql-schema-sync/internal/errors"
 	"mysql-schema-sync/internal/execution"
 	"mysql-schema-sync/internal/logging"
@@ -21,6 +22,7 @@ type Application struct {
 	executor        *execution.Executor
 	logger          *logging.Logger
 	shutdownHandler *appErrors.GracefulShutdownHandler
+	displayService  display.DisplayService
 }
 
 // Config holds the application configuration
@@ -33,7 +35,11 @@ type Config struct {
 	Quiet       bool                    `mapstructure:"quiet" yaml:"quiet"`
 	LogFile     string                  `mapstructure:"log_file" yaml:"log_file"`
 	Timeout     time.Duration           `mapstructure:"timeout" yaml:"timeout"`
+	Display     DisplayConfig           `mapstructure:"display" yaml:"display"`
 }
+
+// DisplayConfig is an alias to the display package's DisplayConfig
+type DisplayConfig = display.DisplayConfig
 
 // NewApplication creates a new application instance
 func NewApplication(config Config) (*Application, error) {
@@ -44,6 +50,27 @@ func NewApplication(config Config) (*Application, error) {
 	} else if config.Verbose {
 		logLevel = logging.LogLevelVerbose
 	}
+
+	// Create and configure display service
+	displayConfig := &config.Display
+
+	// Handle conflicting verbose/quiet modes - quiet takes precedence
+	if config.Quiet && config.Verbose {
+		displayConfig.VerboseMode = false
+		displayConfig.QuietMode = true
+	} else {
+		displayConfig.VerboseMode = config.Verbose
+		displayConfig.QuietMode = config.Quiet
+	}
+
+	displayConfig.SetDefaults()
+
+	// Validate display configuration
+	if err := displayConfig.Validate(); err != nil {
+		return nil, fmt.Errorf("display configuration validation failed: %w", err)
+	}
+
+	displayService := display.NewDisplayService(displayConfig)
 
 	// Create execution config
 	execConfig := execution.ExecutionConfig{
@@ -66,10 +93,14 @@ func NewApplication(config Config) (*Application, error) {
 		return nil, fmt.Errorf("configuration validation failed: %w", err)
 	}
 
+	// Set the display service on the executor
+	executor.SetDisplayService(displayService)
+
 	app := &Application{
 		executor:        executor,
 		logger:          executor.GetLogger(),
 		shutdownHandler: executor.GetShutdownHandler(),
+		displayService:  displayService,
 	}
 
 	return app, nil
@@ -78,6 +109,7 @@ func NewApplication(config Config) (*Application, error) {
 // Run executes the application
 func (app *Application) Run() error {
 	app.logger.Info("MySQL Schema Sync starting")
+	app.displayService.Info("MySQL Schema Sync starting")
 
 	// Set up signal handling for graceful shutdown
 	app.setupSignalHandling()
@@ -96,6 +128,7 @@ func (app *Application) Run() error {
 	app.displayResults(result)
 
 	app.logger.Info("MySQL Schema Sync completed")
+	app.displayService.Success("MySQL Schema Sync completed")
 	return nil
 }
 
@@ -128,7 +161,7 @@ func (app *Application) handleExecutionError(err error) {
 
 	// Display user-friendly error message
 	userMessage := appErrors.FormatUserError(processedErr)
-	fmt.Fprintf(os.Stderr, "Error: %s\n", userMessage)
+	app.displayService.Error(userMessage)
 
 	// Log detailed error information
 	var appErr *appErrors.AppError
@@ -146,37 +179,48 @@ func (app *Application) handleExecutionError(err error) {
 
 // provideTroubleshootingHints provides helpful troubleshooting information
 func (app *Application) provideTroubleshootingHints(appErr *appErrors.AppError) {
+	var hints []string
+
 	switch appErr.Type {
 	case appErrors.ErrorTypeConnection:
-		fmt.Fprintf(os.Stderr, "\nTroubleshooting hints:\n")
-		fmt.Fprintf(os.Stderr, "- Check that the database server is running\n")
-		fmt.Fprintf(os.Stderr, "- Verify the host and port are correct\n")
-		fmt.Fprintf(os.Stderr, "- Ensure network connectivity to the database server\n")
-		fmt.Fprintf(os.Stderr, "- Check firewall settings\n")
+		hints = []string{
+			"Check that the database server is running",
+			"Verify the host and port are correct",
+			"Ensure network connectivity to the database server",
+			"Check firewall settings",
+		}
 
 	case appErrors.ErrorTypePermission:
-		fmt.Fprintf(os.Stderr, "\nTroubleshooting hints:\n")
-		fmt.Fprintf(os.Stderr, "- Verify the username and password are correct\n")
-		fmt.Fprintf(os.Stderr, "- Check that the user has the required permissions\n")
-		fmt.Fprintf(os.Stderr, "- Ensure the user can connect from your host\n")
+		hints = []string{
+			"Verify the username and password are correct",
+			"Check that the user has the required permissions",
+			"Ensure the user can connect from your host",
+		}
 
 	case appErrors.ErrorTypeValidation:
-		fmt.Fprintf(os.Stderr, "\nTroubleshooting hints:\n")
-		fmt.Fprintf(os.Stderr, "- Check that the database names are correct\n")
-		fmt.Fprintf(os.Stderr, "- Verify that the databases exist\n")
-		fmt.Fprintf(os.Stderr, "- Review the command line arguments\n")
+		hints = []string{
+			"Check that the database names are correct",
+			"Verify that the databases exist",
+			"Review the command line arguments",
+		}
 
 	case appErrors.ErrorTypeTimeout:
-		fmt.Fprintf(os.Stderr, "\nTroubleshooting hints:\n")
-		fmt.Fprintf(os.Stderr, "- The operation may be taking longer than expected\n")
-		fmt.Fprintf(os.Stderr, "- Try increasing the timeout value\n")
-		fmt.Fprintf(os.Stderr, "- Check database server performance\n")
+		hints = []string{
+			"The operation may be taking longer than expected",
+			"Try increasing the timeout value",
+			"Check database server performance",
+		}
 
 	case appErrors.ErrorTypeSQL:
-		fmt.Fprintf(os.Stderr, "\nTroubleshooting hints:\n")
-		fmt.Fprintf(os.Stderr, "- Review the SQL statements being executed\n")
-		fmt.Fprintf(os.Stderr, "- Check for syntax errors or unsupported features\n")
-		fmt.Fprintf(os.Stderr, "- Verify database permissions for schema modifications\n")
+		hints = []string{
+			"Review the SQL statements being executed",
+			"Check for syntax errors or unsupported features",
+			"Verify database permissions for schema modifications",
+		}
+	}
+
+	if len(hints) > 0 {
+		app.displayService.PrintSection("Troubleshooting hints", hints)
 	}
 }
 
@@ -186,33 +230,34 @@ func (app *Application) displayResults(result *execution.ExecutionResult) {
 		return
 	}
 
-	fmt.Printf("\n=== Schema Synchronization Results ===\n")
-	fmt.Printf("Status: %s\n", app.getStatusString(result.Success))
-	fmt.Printf("Duration: %s\n", result.Duration.String())
+	app.displayService.PrintHeader("Schema Synchronization Results")
+
+	// Display status
+	statusMessage := fmt.Sprintf("Status: %s", app.getStatusString(result.Success))
+	if result.Success {
+		app.displayService.Success(statusMessage)
+	} else {
+		app.displayService.Error(statusMessage)
+	}
+
+	app.displayService.Info(fmt.Sprintf("Duration: %s", result.Duration.String()))
 
 	if result.SchemaDiff != nil {
 		app.displaySchemaDiff(result.SchemaDiff)
 	}
 
 	if len(result.Warnings) > 0 {
-		fmt.Printf("\nWarnings:\n")
-		for _, warning := range result.Warnings {
-			fmt.Printf("  - %s\n", warning)
-		}
+		app.displayService.PrintSection("Warnings", result.Warnings)
 	}
 
 	if len(result.ExecutedStatements) > 0 {
-		fmt.Printf("\nExecuted Statements (%d):\n", len(result.ExecutedStatements))
-		for i, stmt := range result.ExecutedStatements {
-			fmt.Printf("  %d. %s\n", i+1, stmt)
-		}
+		app.displayService.PrintSection(fmt.Sprintf("Executed Statements (%d)", len(result.ExecutedStatements)), nil)
+		app.displayService.PrintSQL(result.ExecutedStatements)
 	} else if result.Success && result.SchemaDiff != nil {
 		if app.executor.GetLogger().GetLevel() == logging.LogLevelVerbose {
-			fmt.Printf("\nNo statements executed (dry run mode or no changes needed)\n")
+			app.displayService.Info("No statements executed (dry run mode or no changes needed)")
 		}
 	}
-
-	fmt.Printf("\n")
 }
 
 // displaySchemaDiff displays schema differences
@@ -224,42 +269,14 @@ func (app *Application) displaySchemaDiff(diff *schema.SchemaDiff) {
 	totalChanges := len(diff.AddedTables) + len(diff.RemovedTables) + len(diff.ModifiedTables) +
 		len(diff.AddedIndexes) + len(diff.RemovedIndexes)
 
-	fmt.Printf("Changes Found: %d\n", totalChanges)
+	app.displayService.Info(fmt.Sprintf("Changes Found: %d", totalChanges))
 
-	if len(diff.AddedTables) > 0 {
-		fmt.Printf("  Tables to Add: %d\n", len(diff.AddedTables))
-		if app.logger.GetLevel() == logging.LogLevelVerbose {
-			for _, table := range diff.AddedTables {
-				fmt.Printf("    + %s\n", table.Name)
-			}
-		}
-	}
+	// Use the enhanced schema diff presenter for detailed formatting
+	presenter := app.displayService.NewSchemaDiffPresenter()
+	formattedDiff := presenter.FormatSchemaDiff(diff)
 
-	if len(diff.RemovedTables) > 0 {
-		fmt.Printf("  Tables to Remove: %d\n", len(diff.RemovedTables))
-		if app.logger.GetLevel() == logging.LogLevelVerbose {
-			for _, table := range diff.RemovedTables {
-				fmt.Printf("    - %s\n", table.Name)
-			}
-		}
-	}
-
-	if len(diff.ModifiedTables) > 0 {
-		fmt.Printf("  Tables to Modify: %d\n", len(diff.ModifiedTables))
-		if app.logger.GetLevel() == logging.LogLevelVerbose {
-			for _, tableDiff := range diff.ModifiedTables {
-				fmt.Printf("    ~ %s\n", tableDiff.TableName)
-			}
-		}
-	}
-
-	if len(diff.AddedIndexes) > 0 {
-		fmt.Printf("  Indexes to Add: %d\n", len(diff.AddedIndexes))
-	}
-
-	if len(diff.RemovedIndexes) > 0 {
-		fmt.Printf("  Indexes to Remove: %d\n", len(diff.RemovedIndexes))
-	}
+	// Display the formatted diff as a section
+	app.displayService.PrintSection("Schema Differences", formattedDiff)
 }
 
 // getStatusString returns a formatted status string
@@ -273,6 +290,11 @@ func (app *Application) getStatusString(success bool) string {
 // GetLogger returns the application logger
 func (app *Application) GetLogger() *logging.Logger {
 	return app.logger
+}
+
+// GetDisplayService returns the application display service
+func (app *Application) GetDisplayService() display.DisplayService {
+	return app.displayService
 }
 
 // Shutdown performs graceful shutdown

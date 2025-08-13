@@ -5,13 +5,16 @@ A powerful CLI tool for synchronizing MySQL database schemas. Compare two MySQL 
 ## Features
 
 - **Schema Comparison**: Compare tables, columns, indexes, and constraints between source and target databases
+- **Enhanced Visual Output**: Colorized output, progress indicators, and formatted tables for better readability
+- **Multiple Output Formats**: Table, JSON, YAML, and compact formats for different use cases
+- **Accessibility Support**: High contrast themes, screen reader compatibility, and graceful fallbacks
 - **Safe Operations**: Dry-run mode to preview changes before applying them
-- **Interactive Confirmation**: Review and approve changes before execution
+- **Interactive Confirmation**: Enhanced confirmation dialogs with visual indicators and detailed change review
 - **Comprehensive Change Detection**: Detects additions, deletions, and modifications at all schema levels
 - **Dependency-Aware**: Applies changes in the correct order to avoid conflicts
 - **Flexible Configuration**: Support for CLI flags, configuration files, and environment variables
 - **Detailed Logging**: Comprehensive logging with configurable verbosity levels
-- **Cross-Platform**: Available for Linux, macOS, and Windows
+- **Cross-Platform**: Available for Linux, macOS, and Windows with terminal compatibility
 
 ## Installation
 
@@ -71,6 +74,93 @@ Preview changes without applying them:
 mysql-schema-sync --config=config.yaml --dry-run
 ```
 
+## Visual Enhancements
+
+MySQL Schema Sync includes comprehensive visual enhancements to improve readability and user experience:
+
+### Enhanced Output Examples
+
+#### Colorized Schema Differences
+```
+┌─────────────────┬──────────────┬─────────────────────────────────┐
+│ Change Type     │ Object       │ Description                     │
+├─────────────────┼──────────────┼─────────────────────────────────┤
+│ ➕ ADD TABLE    │ users        │ Create new table with 5 columns │
+│ 🔄 MODIFY TABLE │ products     │ Add column 'created_at'         │
+│ ➖ DROP COLUMN  │ orders.notes │ Remove unused notes column      │
+└─────────────────┴──────────────┴─────────────────────────────────┘
+
+Summary: 3 changes detected (1 addition, 1 modification, 1 deletion)
+```
+
+#### Progress Indicators
+```
+🔄 Connecting to source database...     ✅ Connected
+🔄 Extracting source schema...          ✅ 15 tables processed
+🔄 Connecting to target database...     ✅ Connected  
+🔄 Extracting target schema...          ✅ 12 tables processed
+🔄 Comparing schemas...                 ✅ Analysis complete
+
+Progress: [████████████████████] 100% | 3/3 changes processed
+```
+
+#### Interactive Confirmations
+```
+⚠️  Schema Synchronization Confirmation
+
+The following changes will be applied to the target database:
+
+  ➕ CREATE TABLE users (5 columns)
+  🔄 ALTER TABLE products ADD COLUMN created_at
+  ➖ ALTER TABLE orders DROP COLUMN notes
+
+❓ Do you want to proceed with these changes? [y/N]: 
+```
+
+### Visual Options
+
+#### Color Themes
+- **Dark Theme** (default): Bright colors on dark backgrounds
+- **Light Theme**: Darker colors for light terminals  
+- **High Contrast**: Enhanced contrast for accessibility
+- **Auto**: Automatically detects terminal theme
+
+#### Output Formats
+- **Table**: Formatted tables with colors and styling (default)
+- **JSON**: Machine-readable structured output
+- **YAML**: Human-readable structured format
+- **Compact**: Minimal output for scripting
+
+#### Table Styles
+- **Default**: Standard ASCII borders
+- **Rounded**: Modern rounded corners (Unicode)
+- **Border**: Heavy borders for emphasis
+- **Minimal**: Clean, simple formatting
+
+### Accessibility Features
+
+- **Screen Reader Support**: Compatible with NVDA, JAWS, and VoiceOver
+- **High Contrast Mode**: Enhanced visibility for visual impairments
+- **ASCII Fallbacks**: Unicode icons automatically fall back to ASCII
+- **Configurable Width**: Adjustable table width for different screen sizes
+- **Keyboard Navigation**: Full keyboard support for interactive elements
+
+### Usage Examples
+
+```bash
+# Use light theme with rounded tables
+mysql-schema-sync --config=config.yaml --theme=light --table-style=rounded
+
+# High contrast mode for accessibility
+mysql-schema-sync --config=config.yaml --theme=high-contrast --no-icons
+
+# JSON output for automation
+mysql-schema-sync --config=config.yaml --format=json --no-color
+
+# Compact output for scripting
+mysql-schema-sync --config=config.yaml --format=compact --no-progress
+```
+
 ## Configuration
 
 ### Configuration File
@@ -107,6 +197,17 @@ quiet: false        # Suppress non-error output
 auto_approve: false # Automatically approve changes without confirmation
 timeout: 30s        # Global timeout for operations
 log_file: ""        # Optional log file path
+
+# Visual enhancement settings
+display:
+  color_enabled: true      # Enable colorized output
+  theme: dark              # Color theme (dark, light, high-contrast, auto)
+  output_format: table     # Output format (table, json, yaml, compact)
+  use_icons: true          # Enable Unicode icons with ASCII fallbacks
+  show_progress: true      # Show progress indicators and spinners
+  interactive: true        # Enable interactive confirmations
+  table_style: default     # Table styling (default, rounded, border, minimal)
+  max_table_width: 120     # Maximum table width (40-300)
 ```
 
 ### Command Line Options
@@ -136,6 +237,17 @@ log_file: ""        # Optional log file path
 - `--auto-approve`: Automatically approve changes without confirmation
 - `--timeout`: Database operation timeout (default: 30s)
 - `--log-file`: Write logs to file instead of stdout
+
+#### Visual Enhancement Options
+
+- `--no-color`: Disable color output
+- `--theme`: Color theme (dark, light, high-contrast, auto) (default: dark)
+- `--format`: Output format (table, json, yaml, compact) (default: table)
+- `--no-icons`: Disable Unicode icons (use ASCII alternatives)
+- `--no-progress`: Disable progress indicators and spinners
+- `--no-interactive`: Disable interactive prompts and confirmations
+- `--table-style`: Table style (default, rounded, border, minimal) (default: default)
+- `--max-table-width`: Maximum table width in characters (40-300) (default: 120)
 
 ### Environment Variables
 
@@ -282,12 +394,130 @@ Error: failed to extract schema: table doesn't exist
 - Check user permissions on INFORMATION_SCHEMA tables
 - Ensure databases are accessible
 
+### Visual Display Issues
+
+**Colors Not Displaying**:
+```bash
+# Force color output
+mysql-schema-sync --config=config.yaml --theme=dark
+
+# Check if terminal supports colors
+mysql-schema-sync --config=config.yaml --verbose
+```
+
+**Unicode Icons Not Showing**:
+```bash
+# Use ASCII alternatives
+mysql-schema-sync --config=config.yaml --no-icons
+
+# Check terminal Unicode support
+echo "Test: ➕ 🔄 ➖"
+```
+
+**Table Formatting Issues**:
+```bash
+# Use minimal table style for compatibility
+mysql-schema-sync --config=config.yaml --table-style=minimal
+
+# Adjust table width for narrow terminals
+mysql-schema-sync --config=config.yaml --max-table-width=80
+```
+
+**Progress Indicators Not Working**:
+```bash
+# Disable progress bars for non-interactive environments
+mysql-schema-sync --config=config.yaml --no-progress
+
+# Check if running in TTY
+tty && echo "Interactive terminal" || echo "Non-interactive"
+```
+
+### Terminal Compatibility
+
+**Windows Command Prompt**:
+- Limited color support
+- No Unicode icon support
+- Use: `--no-icons --table-style=minimal`
+
+**Windows PowerShell**:
+- Full color support
+- Limited Unicode support
+- Use: `--theme=auto --table-style=default`
+
+**Windows Terminal**:
+- Full feature support
+- All visual enhancements work
+
+**macOS Terminal**:
+- Full feature support
+- All themes and styles supported
+
+**Linux Terminals**:
+- Most modern terminals support all features
+- Older terminals may need `--no-icons --no-color`
+
+**SSH/Remote Sessions**:
+- May have limited color/Unicode support
+- Use: `--theme=auto --format=compact`
+
+**Screen/Tmux**:
+- Color support depends on configuration
+- Test with: `--theme=auto --verbose`
+
+### Accessibility Troubleshooting
+
+**Screen Reader Issues**:
+```bash
+# Optimize for screen readers
+mysql-schema-sync --config=config.yaml \
+  --no-icons \
+  --table-style=minimal \
+  --theme=high-contrast \
+  --verbose
+```
+
+**High Contrast Needs**:
+```bash
+# Use high contrast theme
+mysql-schema-sync --config=config.yaml --theme=high-contrast
+```
+
+**Narrow Screen Issues**:
+```bash
+# Reduce table width
+mysql-schema-sync --config=config.yaml --max-table-width=60
+```
+
 ### Debug Mode
 
 Enable verbose logging for troubleshooting:
 
 ```bash
-mysql-schema-sync --config=config.yaml --verbose --log-file=debug.log
+# Enhanced debug output with visual information
+mysql-schema-sync --config=config.yaml \
+  --verbose \
+  --theme=high-contrast \
+  --log-file=debug.log
+
+# Test terminal capabilities
+mysql-schema-sync --config=config.yaml --verbose --dry-run
+```
+
+### Environment Detection
+
+The tool automatically detects terminal capabilities:
+
+```bash
+# Check what the tool detects about your terminal
+mysql-schema-sync --config=config.yaml --verbose --dry-run 2>&1 | grep -i "terminal\|color\|unicode"
+```
+
+**Manual Override**:
+```bash
+# Force specific settings if auto-detection fails
+export MYSQL_SCHEMA_SYNC_NO_COLOR=1
+export MYSQL_SCHEMA_SYNC_NO_ICONS=1
+export MYSQL_SCHEMA_SYNC_THEME=high-contrast
 ```
 
 ### Getting Help

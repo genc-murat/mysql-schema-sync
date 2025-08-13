@@ -11,39 +11,104 @@ import (
 
 // Service provides high-level schema operations
 type Service struct {
-	extractor *Extractor
-	logger    *logging.Logger
+	extractor      *Extractor
+	logger         *logging.Logger
+	displayService DisplayService
 }
+
+// DisplayService interface for visual enhancements (to avoid circular imports)
+type DisplayService interface {
+	StartSpinner(message string) SpinnerHandle
+	UpdateSpinner(handle SpinnerHandle, message string)
+	StopSpinner(handle SpinnerHandle, finalMessage string)
+	ShowProgress(current, total int, message string)
+	NewProgressTracker(phases []string) ProgressTracker
+	Success(message string)
+	Warning(message string)
+	Error(message string)
+	Info(message string)
+	RenderIconWithColor(name string) string
+	NewSchemaDiffPresenter() SchemaDiffPresenter
+	PrintTable(headers []string, rows [][]string)
+}
+
+// SpinnerHandle interface for spinner management
+type SpinnerHandle interface {
+	ID() string
+	IsActive() bool
+}
+
+// ProgressTracker interface for multi-phase progress tracking
+type ProgressTracker interface {
+	StartPhase(phaseIndex int, total int, message string)
+	UpdatePhase(current int, message string)
+	CompletePhase(finalMessage string)
+	GetPhaseCount() int
+	GetCurrentPhase() int
+	IsCompleted() bool
+}
+
+// SchemaDiffPresenter interface for enhanced diff presentation
+type SchemaDiffPresenter interface {
+	FormatDiff(diff *SchemaDiff) string
+	FormatTable(table *Table, changeType ChangeType) string
+	FormatColumn(column *Column, changeType ChangeType) string
+	FormatIndex(index *Index, changeType ChangeType) string
+}
+
+// ChangeType represents the type of change in schema comparison
+type ChangeType int
+
+const (
+	ChangeAdded ChangeType = iota
+	ChangeRemoved
+	ChangeModified
+)
 
 // NewService creates a new schema service
 func NewService() *Service {
 	return &Service{
-		extractor: NewExtractor(),
-		logger:    logging.NewDefaultLogger(),
+		extractor:      NewExtractor(),
+		logger:         logging.NewDefaultLogger(),
+		displayService: nil, // Will be set via SetDisplayService
 	}
 }
 
 // NewServiceWithTimeout creates a new schema service with custom timeout
 func NewServiceWithTimeout(timeout time.Duration) *Service {
 	return &Service{
-		extractor: NewExtractorWithTimeout(timeout),
-		logger:    logging.NewDefaultLogger(),
+		extractor:      NewExtractorWithTimeout(timeout),
+		logger:         logging.NewDefaultLogger(),
+		displayService: nil, // Will be set via SetDisplayService
 	}
 }
 
 // NewServiceWithLogger creates a new schema service with a custom logger
 func NewServiceWithLogger(logger *logging.Logger) *Service {
 	return &Service{
-		extractor: NewExtractor(),
-		logger:    logger,
+		extractor:      NewExtractor(),
+		logger:         logger,
+		displayService: nil, // Will be set via SetDisplayService
 	}
+}
+
+// SetDisplayService sets the display service for visual enhancements
+func (s *Service) SetDisplayService(displayService DisplayService) {
+	s.displayService = displayService
+
+	// Also set it on the extractor (cast to the simpler interface)
+	s.extractor.SetDisplayService(displayService)
 }
 
 // ExtractSchemaFromDB extracts schema from a database connection
 // If schemaName is empty, it will use the current database
 func (s *Service) ExtractSchemaFromDB(db *sql.DB, schemaName string) (*Schema, error) {
 	if db == nil {
-		return nil, errors.NewAppError(errors.ErrorTypeValidation, "database connection is nil", nil)
+		err := errors.NewAppError(errors.ErrorTypeValidation, "database connection is nil", nil)
+		if s.displayService != nil {
+			s.displayService.Error("Database connection is nil")
+		}
+		return nil, err
 	}
 
 	startTime := time.Now()
@@ -51,36 +116,93 @@ func (s *Service) ExtractSchemaFromDB(db *sql.DB, schemaName string) (*Schema, e
 		"schema": schemaName,
 	})
 
+	// Start progress tracking
+	var progressTracker ProgressTracker
+	if s.displayService != nil {
+		phases := []string{"Validation", "Schema Discovery", "Table Extraction", "Index Extraction"}
+		progressTracker = s.displayService.NewProgressTracker(phases)
+		s.displayService.Info(fmt.Sprintf("Starting schema extraction for '%s'...", schemaName))
+	}
+
+	// Phase 1: Schema validation and discovery
+	if progressTracker != nil {
+		progressTracker.StartPhase(0, 2, "Validating schema...")
+	}
+
 	// If no schema name provided, get the current one
 	if schemaName == "" {
+		if progressTracker != nil {
+			progressTracker.UpdatePhase(1, "Detecting current schema...")
+		}
+
 		currentSchema, err := s.extractor.GetCurrentSchema(db)
 		if err != nil {
 			finishLog(err)
+			if s.displayService != nil {
+				s.displayService.Error(fmt.Sprintf("Failed to get current schema: %v", err))
+			}
 			return nil, errors.WrapError(err, "failed to get current schema")
 		}
 		schemaName = currentSchema
 		s.logger.WithField("detected_schema", schemaName).Debug("Using current database schema")
+
+		if s.displayService != nil {
+			s.displayService.Info(fmt.Sprintf("Detected schema: %s", schemaName))
+		}
 	}
 
 	// Validate that the schema exists
+	if progressTracker != nil {
+		progressTracker.UpdatePhase(2, "Validating schema existence...")
+	}
+
 	if err := s.extractor.ValidateSchemaExists(db, schemaName); err != nil {
 		finishLog(err)
+		if s.displayService != nil {
+			s.displayService.Error(fmt.Sprintf("Schema validation failed: %v", err))
+		}
 		return nil, errors.WrapError(err, "schema validation failed")
 	}
 
-	// Extract the schema
+	if progressTracker != nil {
+		progressTracker.CompletePhase("Schema validation completed")
+	}
+
+	// Phase 2: Extract the schema
+	if progressTracker != nil {
+		progressTracker.StartPhase(1, 1, "Extracting schema structure...")
+	}
+
 	schema, err := s.extractor.ExtractSchema(db, schemaName)
 	duration := time.Since(startTime)
 
 	if err != nil {
 		finishLog(err)
 		s.logger.LogSchemaExtraction(schemaName, 0, duration, err)
+		if s.displayService != nil {
+			s.displayService.Error(fmt.Sprintf("Schema extraction failed: %v", err))
+		}
 		return nil, errors.WrapError(err, "failed to extract schema")
+	}
+
+	if progressTracker != nil {
+		progressTracker.CompletePhase("Schema extraction completed")
 	}
 
 	tableCount := len(schema.Tables)
 	finishLog(nil)
 	s.logger.LogSchemaExtraction(schemaName, tableCount, duration, nil)
+
+	// Show extraction results
+	if s.displayService != nil {
+		s.displayService.Success(fmt.Sprintf("%s Schema '%s' extracted successfully",
+			s.displayService.RenderIconWithColor("success"), schemaName))
+
+		// Show schema statistics
+		stats := s.GetSchemaStats(schema)
+		s.displayService.Info(fmt.Sprintf("Found %d tables, %d columns, %d indexes (%.2fs)",
+			stats["tables"], stats["columns"], stats["indexes"], duration.Seconds()))
+	}
 
 	return schema, nil
 }
@@ -88,10 +210,18 @@ func (s *Service) ExtractSchemaFromDB(db *sql.DB, schemaName string) (*Schema, e
 // CompareSchemas compares two schemas and returns the differences
 func (s *Service) CompareSchemas(source, target *Schema) (*SchemaDiff, error) {
 	if source == nil {
-		return nil, errors.NewAppError(errors.ErrorTypeValidation, "source schema is nil", nil)
+		err := errors.NewAppError(errors.ErrorTypeValidation, "source schema is nil", nil)
+		if s.displayService != nil {
+			s.displayService.Error("Source schema is nil")
+		}
+		return nil, err
 	}
 	if target == nil {
-		return nil, errors.NewAppError(errors.ErrorTypeValidation, "target schema is nil", nil)
+		err := errors.NewAppError(errors.ErrorTypeValidation, "target schema is nil", nil)
+		if s.displayService != nil {
+			s.displayService.Error("Target schema is nil")
+		}
+		return nil, err
 	}
 
 	startTime := time.Now()
@@ -99,6 +229,14 @@ func (s *Service) CompareSchemas(source, target *Schema) (*SchemaDiff, error) {
 		"source_tables": len(source.Tables),
 		"target_tables": len(target.Tables),
 	})
+
+	// Start progress tracking
+	var progressTracker ProgressTracker
+	if s.displayService != nil {
+		phases := []string{"Table Analysis", "Column Comparison", "Index Comparison", "Constraint Analysis"}
+		progressTracker = s.displayService.NewProgressTracker(phases)
+		s.displayService.Info(fmt.Sprintf("Comparing schemas '%s' vs '%s'...", source.Name, target.Name))
+	}
 
 	diff := &SchemaDiff{
 		AddedTables:        make([]*Table, 0),
@@ -110,10 +248,21 @@ func (s *Service) CompareSchemas(source, target *Schema) (*SchemaDiff, error) {
 		RemovedConstraints: make([]*Constraint, 0),
 	}
 
+	// Phase 1: Table Analysis
+	if progressTracker != nil {
+		progressTracker.StartPhase(0, len(source.Tables)+len(target.Tables), "Analyzing table differences...")
+	}
+
+	processed := 0
+
 	// Find added and removed tables
 	for tableName, sourceTable := range source.Tables {
 		if _, exists := target.Tables[tableName]; !exists {
 			diff.AddedTables = append(diff.AddedTables, sourceTable)
+		}
+		processed++
+		if progressTracker != nil {
+			progressTracker.UpdatePhase(processed, fmt.Sprintf("Analyzing table: %s", tableName))
 		}
 	}
 
@@ -121,22 +270,63 @@ func (s *Service) CompareSchemas(source, target *Schema) (*SchemaDiff, error) {
 		if _, exists := source.Tables[tableName]; !exists {
 			diff.RemovedTables = append(diff.RemovedTables, targetTable)
 		}
+		processed++
+		if progressTracker != nil {
+			progressTracker.UpdatePhase(processed, fmt.Sprintf("Analyzing table: %s", tableName))
+		}
 	}
 
+	if progressTracker != nil {
+		progressTracker.CompletePhase("Table analysis completed")
+	}
+
+	// Phase 2: Column Comparison
+	commonTables := 0
+	for tableName := range source.Tables {
+		if _, exists := target.Tables[tableName]; exists {
+			commonTables++
+		}
+	}
+
+	if progressTracker != nil {
+		progressTracker.StartPhase(1, commonTables, "Comparing table structures...")
+	}
+
+	processed = 0
 	// Find modified tables
 	for tableName, sourceTable := range source.Tables {
 		if targetTable, exists := target.Tables[tableName]; exists {
+			if progressTracker != nil {
+				progressTracker.UpdatePhase(processed+1, fmt.Sprintf("Comparing table: %s", tableName))
+			}
+
 			tableDiff := s.compareTable(sourceTable, targetTable)
 			if !s.isTableDiffEmpty(tableDiff) {
 				diff.ModifiedTables = append(diff.ModifiedTables, tableDiff)
 			}
+			processed++
 		}
 	}
+
+	if progressTracker != nil {
+		progressTracker.CompletePhase("Column comparison completed")
+	}
+
+	// Phase 3: Index Comparison
+	if progressTracker != nil {
+		progressTracker.StartPhase(2, len(source.Indexes)+len(target.Indexes)+commonTables, "Comparing indexes...")
+	}
+
+	processed = 0
 
 	// Compare global indexes (if any)
 	for indexName, sourceIndex := range source.Indexes {
 		if _, exists := target.Indexes[indexName]; !exists {
 			diff.AddedIndexes = append(diff.AddedIndexes, sourceIndex)
+		}
+		processed++
+		if progressTracker != nil {
+			progressTracker.UpdatePhase(processed, fmt.Sprintf("Analyzing global index: %s", indexName))
 		}
 	}
 
@@ -144,10 +334,34 @@ func (s *Service) CompareSchemas(source, target *Schema) (*SchemaDiff, error) {
 		if _, exists := source.Indexes[indexName]; !exists {
 			diff.RemovedIndexes = append(diff.RemovedIndexes, targetIndex)
 		}
+		processed++
+		if progressTracker != nil {
+			progressTracker.UpdatePhase(processed, fmt.Sprintf("Analyzing global index: %s", indexName))
+		}
 	}
 
 	// Compare table-level indexes for all common tables
+	for tableName := range source.Tables {
+		if _, exists := target.Tables[tableName]; exists {
+			processed++
+			if progressTracker != nil {
+				progressTracker.UpdatePhase(processed, fmt.Sprintf("Comparing indexes for table: %s", tableName))
+			}
+		}
+	}
+
 	s.compareTableIndexes(source, target, diff)
+
+	if progressTracker != nil {
+		progressTracker.CompletePhase("Index comparison completed")
+	}
+
+	// Phase 4: Final analysis
+	if progressTracker != nil {
+		progressTracker.StartPhase(3, 1, "Finalizing comparison...")
+		progressTracker.UpdatePhase(1, "Calculating statistics...")
+		progressTracker.CompletePhase("Schema comparison completed")
+	}
 
 	duration := time.Since(startTime)
 	changesFound := len(diff.AddedTables) + len(diff.RemovedTables) + len(diff.ModifiedTables) +
@@ -155,6 +369,20 @@ func (s *Service) CompareSchemas(source, target *Schema) (*SchemaDiff, error) {
 
 	finishLog(nil)
 	s.logger.LogSchemaComparison(source.Name, target.Name, changesFound, duration)
+
+	// Display comparison results
+	if s.displayService != nil {
+		if changesFound == 0 {
+			s.displayService.Success(fmt.Sprintf("%s Schemas are identical - no changes detected (%.2fs)",
+				s.displayService.RenderIconWithColor("success"), duration.Seconds()))
+		} else {
+			s.displayService.Info(fmt.Sprintf("Schema comparison completed: %d changes found (%.2fs)",
+				changesFound, duration.Seconds()))
+
+			// Show detailed comparison results
+			s.displayComparisonSummary(diff)
+		}
+	}
 
 	return diff, nil
 }
@@ -575,4 +803,132 @@ func (s *Service) isDataTypeShrinking(oldType, newType string) bool {
 	}
 
 	return false
+}
+
+// displayComparisonSummary shows a formatted summary of schema comparison results
+func (s *Service) displayComparisonSummary(diff *SchemaDiff) {
+	if s.displayService == nil {
+		return
+	}
+
+	// Create summary table
+	headers := []string{"Change Type", "Count", "Details"}
+	rows := [][]string{}
+
+	if len(diff.AddedTables) > 0 {
+		details := fmt.Sprintf("Tables: %s", s.formatTableNames(diff.AddedTables))
+		rows = append(rows, []string{
+			fmt.Sprintf("%s Added Tables", s.displayService.RenderIconWithColor("add")),
+			fmt.Sprintf("%d", len(diff.AddedTables)),
+			details,
+		})
+	}
+
+	if len(diff.RemovedTables) > 0 {
+		details := fmt.Sprintf("Tables: %s", s.formatTableNames(diff.RemovedTables))
+		rows = append(rows, []string{
+			fmt.Sprintf("%s Removed Tables", s.displayService.RenderIconWithColor("remove")),
+			fmt.Sprintf("%d", len(diff.RemovedTables)),
+			details,
+		})
+	}
+
+	if len(diff.ModifiedTables) > 0 {
+		details := fmt.Sprintf("Tables: %s", s.formatModifiedTableNames(diff.ModifiedTables))
+		rows = append(rows, []string{
+			fmt.Sprintf("%s Modified Tables", s.displayService.RenderIconWithColor("modify")),
+			fmt.Sprintf("%d", len(diff.ModifiedTables)),
+			details,
+		})
+	}
+
+	if len(diff.AddedIndexes) > 0 {
+		details := fmt.Sprintf("Indexes: %s", s.formatIndexNames(diff.AddedIndexes))
+		rows = append(rows, []string{
+			fmt.Sprintf("%s Added Indexes", s.displayService.RenderIconWithColor("add")),
+			fmt.Sprintf("%d", len(diff.AddedIndexes)),
+			details,
+		})
+	}
+
+	if len(diff.RemovedIndexes) > 0 {
+		details := fmt.Sprintf("Indexes: %s", s.formatIndexNames(diff.RemovedIndexes))
+		rows = append(rows, []string{
+			fmt.Sprintf("%s Removed Indexes", s.displayService.RenderIconWithColor("remove")),
+			fmt.Sprintf("%d", len(diff.RemovedIndexes)),
+			details,
+		})
+	}
+
+	if len(rows) > 0 {
+		s.displayService.PrintTable(headers, rows)
+	}
+
+	// Show warnings for potentially destructive changes
+	warnings := s.DetectComplexModifications(diff)
+	if len(warnings) > 0 {
+		s.displayService.Warning("Potentially destructive changes detected:")
+		for _, warning := range warnings {
+			s.displayService.Warning(fmt.Sprintf("  %s %s",
+				s.displayService.RenderIconWithColor("warning"), warning))
+		}
+	}
+}
+
+// formatTableNames formats a list of tables for display
+func (s *Service) formatTableNames(tables []*Table) string {
+	if len(tables) == 0 {
+		return ""
+	}
+
+	names := make([]string, len(tables))
+	for i, table := range tables {
+		names[i] = table.Name
+	}
+
+	if len(names) <= 3 {
+		return strings.Join(names, ", ")
+	}
+
+	return fmt.Sprintf("%s, ... (%d more)", strings.Join(names[:3], ", "), len(names)-3)
+}
+
+// formatModifiedTableNames formats a list of modified tables for display
+func (s *Service) formatModifiedTableNames(tableDiffs []*TableDiff) string {
+	if len(tableDiffs) == 0 {
+		return ""
+	}
+
+	names := make([]string, len(tableDiffs))
+	for i, tableDiff := range tableDiffs {
+		names[i] = tableDiff.TableName
+	}
+
+	if len(names) <= 3 {
+		return strings.Join(names, ", ")
+	}
+
+	return fmt.Sprintf("%s, ... (%d more)", strings.Join(names[:3], ", "), len(names)-3)
+}
+
+// formatIndexNames formats a list of indexes for display
+func (s *Service) formatIndexNames(indexes []*Index) string {
+	if len(indexes) == 0 {
+		return ""
+	}
+
+	names := make([]string, len(indexes))
+	for i, index := range indexes {
+		if index.TableName != "" {
+			names[i] = fmt.Sprintf("%s.%s", index.TableName, index.Name)
+		} else {
+			names[i] = index.Name
+		}
+	}
+
+	if len(names) <= 3 {
+		return strings.Join(names, ", ")
+	}
+
+	return fmt.Sprintf("%s, ... (%d more)", strings.Join(names[:3], ", "), len(names)-3)
 }

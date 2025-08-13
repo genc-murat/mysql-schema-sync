@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"mysql-schema-sync/internal/database"
+	"mysql-schema-sync/internal/display"
 	"mysql-schema-sync/internal/errors"
 	"mysql-schema-sync/internal/logging"
 	"mysql-schema-sync/internal/migration"
@@ -43,6 +44,7 @@ type Executor struct {
 	migrationService migration.MigrationService
 	retryHandler     *errors.RetryHandler
 	shutdownHandler  *errors.GracefulShutdownHandler
+	displayService   display.DisplayService
 }
 
 // NewExecutor creates a new executor with the given configuration
@@ -199,13 +201,28 @@ func (e *Executor) connectToDatabases(ctx context.Context) (*sql.DB, *sql.DB, er
 	var sourceDB, targetDB *sql.DB
 	var err error
 
+	// Start spinner for database connections if display service is available
+	var spinner display.SpinnerHandle
+	if e.displayService != nil {
+		spinner = e.displayService.StartSpinner("Connecting to source database...")
+	}
+
 	// Connect to source database with retry
 	err = e.retryHandler.Retry(ctx, func() error {
 		sourceDB, err = e.dbService.Connect(e.config.SourceDB)
 		return err
 	})
 	if err != nil {
+		if e.displayService != nil {
+			e.displayService.StopSpinner(spinner, "")
+			e.displayService.Error(fmt.Sprintf("Failed to connect to source database: %s", e.config.SourceDB.Host))
+		}
 		return nil, nil, errors.WrapError(err, "failed to connect to source database")
+	}
+
+	// Update spinner for target database connection
+	if e.displayService != nil {
+		e.displayService.UpdateSpinner(spinner, "Connecting to target database...")
 	}
 
 	// Connect to target database with retry
@@ -216,7 +233,15 @@ func (e *Executor) connectToDatabases(ctx context.Context) (*sql.DB, *sql.DB, er
 	if err != nil {
 		// Close source DB if target connection fails
 		e.dbService.Close(sourceDB)
+		if e.displayService != nil {
+			e.displayService.StopSpinner(spinner, "")
+			e.displayService.Error(fmt.Sprintf("Failed to connect to target database: %s", e.config.TargetDB.Host))
+		}
 		return nil, nil, errors.WrapError(err, "failed to connect to target database")
+	}
+
+	if e.displayService != nil {
+		e.displayService.StopSpinner(spinner, "Successfully connected to both databases")
 	}
 
 	e.logger.Info("Successfully connected to both databases")
@@ -230,13 +255,28 @@ func (e *Executor) extractSchemas(ctx context.Context, sourceDB, targetDB *sql.D
 	var sourceSchema, targetSchema *schema.Schema
 	var err error
 
+	// Start spinner for schema extraction if display service is available
+	var spinner display.SpinnerHandle
+	if e.displayService != nil {
+		spinner = e.displayService.StartSpinner(fmt.Sprintf("Extracting schema from source database (%s)...", e.config.SourceDB.Database))
+	}
+
 	// Extract source schema
 	err = e.retryHandler.Retry(ctx, func() error {
 		sourceSchema, err = e.schemaService.ExtractSchemaFromDB(sourceDB, e.config.SourceDB.Database)
 		return err
 	})
 	if err != nil {
+		if e.displayService != nil {
+			e.displayService.StopSpinner(spinner, "")
+			e.displayService.Error("Failed to extract source schema")
+		}
 		return nil, nil, errors.WrapError(err, "failed to extract source schema")
+	}
+
+	// Update spinner for target schema extraction
+	if e.displayService != nil {
+		e.displayService.UpdateSpinner(spinner, fmt.Sprintf("Extracting schema from target database (%s)...", e.config.TargetDB.Database))
 	}
 
 	// Extract target schema
@@ -245,7 +285,15 @@ func (e *Executor) extractSchemas(ctx context.Context, sourceDB, targetDB *sql.D
 		return err
 	})
 	if err != nil {
+		if e.displayService != nil {
+			e.displayService.StopSpinner(spinner, "")
+			e.displayService.Error("Failed to extract target schema")
+		}
 		return nil, nil, errors.WrapError(err, "failed to extract target schema")
+	}
+
+	if e.displayService != nil {
+		e.displayService.StopSpinner(spinner, fmt.Sprintf("Schema extraction completed (%d source tables, %d target tables)", len(sourceSchema.Tables), len(targetSchema.Tables)))
 	}
 
 	e.logger.WithFields(map[string]interface{}{
@@ -260,13 +308,27 @@ func (e *Executor) extractSchemas(ctx context.Context, sourceDB, targetDB *sql.D
 func (e *Executor) compareSchemas(sourceSchema, targetSchema *schema.Schema) (*schema.SchemaDiff, error) {
 	e.logger.Info("Comparing schemas")
 
+	// Start spinner for schema comparison if display service is available
+	var spinner display.SpinnerHandle
+	if e.displayService != nil {
+		spinner = e.displayService.StartSpinner("Comparing schemas...")
+	}
+
 	schemaDiff, err := e.schemaService.CompareSchemas(sourceSchema, targetSchema)
 	if err != nil {
+		if e.displayService != nil {
+			e.displayService.StopSpinner(spinner, "")
+			e.displayService.Error("Failed to compare schemas")
+		}
 		return nil, errors.WrapError(err, "failed to compare schemas")
 	}
 
 	changesCount := len(schemaDiff.AddedTables) + len(schemaDiff.RemovedTables) +
 		len(schemaDiff.ModifiedTables) + len(schemaDiff.AddedIndexes) + len(schemaDiff.RemovedIndexes)
+
+	if e.displayService != nil {
+		e.displayService.StopSpinner(spinner, fmt.Sprintf("Schema comparison completed (%d changes found)", changesCount))
+	}
 
 	e.logger.WithField("changes_count", changesCount).Info("Schema comparison completed")
 	return schemaDiff, nil
@@ -298,6 +360,9 @@ func (e *Executor) createMigrationPlan(schemaDiff *schema.SchemaDiff) (*migratio
 func (e *Executor) executeMigration(ctx context.Context, targetDB *sql.DB, migrationPlan *migration.MigrationPlan) error {
 	if len(migrationPlan.Statements) == 0 {
 		e.logger.Info("No migration statements to execute")
+		if e.displayService != nil {
+			e.displayService.Info("No migration statements to execute")
+		}
 		return nil
 	}
 
@@ -309,13 +374,35 @@ func (e *Executor) executeMigration(ctx context.Context, targetDB *sql.DB, migra
 		sqlStatements[i] = stmt.SQL
 	}
 
-	// Execute with retry logic
-	err := e.retryHandler.Retry(ctx, func() error {
-		return e.dbService.ExecuteSQL(targetDB, sqlStatements)
-	})
+	// Create progress bar if display service is available
+	var progressBar *display.ProgressBar
+	if e.displayService != nil {
+		progressBar = e.displayService.NewProgressBar(len(sqlStatements), "Executing migration statements")
+	}
 
-	if err != nil {
-		return errors.WrapError(err, "failed to execute migration")
+	// Execute statements one by one to show progress
+	for i, stmt := range sqlStatements {
+		if e.displayService != nil {
+			progressBar.Update(i, fmt.Sprintf("Executing statement %d/%d", i+1, len(sqlStatements)))
+		}
+
+		// Execute single statement with retry logic
+		err := e.retryHandler.Retry(ctx, func() error {
+			return e.dbService.ExecuteSQL(targetDB, []string{stmt})
+		})
+
+		if err != nil {
+			if e.displayService != nil {
+				progressBar.Finish("Migration failed")
+				e.displayService.Error(fmt.Sprintf("Failed to execute statement %d: %s", i+1, stmt))
+			}
+			return errors.WrapError(err, fmt.Sprintf("failed to execute migration statement %d", i+1))
+		}
+	}
+
+	if e.displayService != nil {
+		progressBar.Finish("Migration executed successfully")
+		e.displayService.Success(fmt.Sprintf("Successfully executed %d migration statements", len(sqlStatements)))
 	}
 
 	e.logger.Info("Migration executed successfully")
@@ -330,6 +417,11 @@ func (e *Executor) GetLogger() *logging.Logger {
 // GetShutdownHandler returns the shutdown handler
 func (e *Executor) GetShutdownHandler() *errors.GracefulShutdownHandler {
 	return e.shutdownHandler
+}
+
+// SetDisplayService sets the display service for enhanced output
+func (e *Executor) SetDisplayService(displayService display.DisplayService) {
+	e.displayService = displayService
 }
 
 // HandleError processes and logs errors appropriately

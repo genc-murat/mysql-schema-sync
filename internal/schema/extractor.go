@@ -9,46 +9,91 @@ import (
 
 // Extractor handles schema extraction from MySQL databases
 type Extractor struct {
-	queryTimeout time.Duration
+	queryTimeout   time.Duration
+	displayService ExtractorDisplayService
+}
+
+// ExtractorDisplayService interface for visual enhancements (simplified for extractor)
+type ExtractorDisplayService interface {
+	ShowProgress(current, total int, message string)
+	Info(message string)
+	Error(message string)
 }
 
 // NewExtractor creates a new schema extractor
 func NewExtractor() *Extractor {
 	return &Extractor{
-		queryTimeout: 30 * time.Second,
+		queryTimeout:   30 * time.Second,
+		displayService: nil, // Will be set via SetDisplayService
 	}
 }
 
 // NewExtractorWithTimeout creates a new schema extractor with custom timeout
 func NewExtractorWithTimeout(timeout time.Duration) *Extractor {
 	return &Extractor{
-		queryTimeout: timeout,
+		queryTimeout:   timeout,
+		displayService: nil, // Will be set via SetDisplayService
 	}
+}
+
+// SetDisplayService sets the display service for visual enhancements
+func (e *Extractor) SetDisplayService(displayService ExtractorDisplayService) {
+	e.displayService = displayService
 }
 
 // ExtractSchema extracts the complete schema from a MySQL database
 func (e *Extractor) ExtractSchema(db *sql.DB, schemaName string) (*Schema, error) {
 	if db == nil {
-		return nil, fmt.Errorf("database connection is nil")
+		err := fmt.Errorf("database connection is nil")
+		if e.displayService != nil {
+			e.displayService.Error("Database connection is nil")
+		}
+		return nil, err
 	}
 
 	if schemaName == "" {
-		return nil, fmt.Errorf("schema name cannot be empty")
+		err := fmt.Errorf("schema name cannot be empty")
+		if e.displayService != nil {
+			e.displayService.Error("Schema name cannot be empty")
+		}
+		return nil, err
 	}
 
 	schema := NewSchema(schemaName)
 
 	// Extract tables
+	if e.displayService != nil {
+		e.displayService.Info("Discovering tables...")
+	}
+
 	tables, err := e.extractTables(db, schemaName)
 	if err != nil {
+		if e.displayService != nil {
+			e.displayService.Error(fmt.Sprintf("Failed to extract tables: %v", err))
+		}
 		return nil, fmt.Errorf("failed to extract tables: %w", err)
 	}
 
+	tableCount := len(tables)
+	if e.displayService != nil {
+		e.displayService.Info(fmt.Sprintf("Found %d tables, extracting details...", tableCount))
+	}
+
 	// For each table, extract columns and indexes
+	processed := 0
 	for _, table := range tables {
+		processed++
+
+		if e.displayService != nil {
+			e.displayService.ShowProgress(processed, tableCount, fmt.Sprintf("Processing table: %s", table.Name))
+		}
+
 		// Extract columns
 		columns, err := e.extractColumns(db, schemaName, table.Name)
 		if err != nil {
+			if e.displayService != nil {
+				e.displayService.Error(fmt.Sprintf("Failed to extract columns for table %s: %v", table.Name, err))
+			}
 			return nil, fmt.Errorf("failed to extract columns for table %s: %w", table.Name, err)
 		}
 		table.Columns = columns
@@ -56,6 +101,9 @@ func (e *Extractor) ExtractSchema(db *sql.DB, schemaName string) (*Schema, error
 		// Extract indexes
 		indexes, err := e.extractIndexes(db, schemaName, table.Name)
 		if err != nil {
+			if e.displayService != nil {
+				e.displayService.Error(fmt.Sprintf("Failed to extract indexes for table %s: %v", table.Name, err))
+			}
 			return nil, fmt.Errorf("failed to extract indexes for table %s: %w", table.Name, err)
 		}
 		table.Indexes = indexes
@@ -67,12 +115,18 @@ func (e *Extractor) ExtractSchema(db *sql.DB, schemaName string) (*Schema, error
 	// Extract global indexes (if any)
 	globalIndexes, err := e.extractGlobalIndexes(db, schemaName)
 	if err != nil {
+		if e.displayService != nil {
+			e.displayService.Error(fmt.Sprintf("Failed to extract global indexes: %v", err))
+		}
 		return nil, fmt.Errorf("failed to extract global indexes: %w", err)
 	}
 	schema.Indexes = globalIndexes
 
 	// Validate the extracted schema
 	if err := schema.Validate(); err != nil {
+		if e.displayService != nil {
+			e.displayService.Error(fmt.Sprintf("Extracted schema is invalid: %v", err))
+		}
 		return nil, fmt.Errorf("extracted schema is invalid: %w", err)
 	}
 

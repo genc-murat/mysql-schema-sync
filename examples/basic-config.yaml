@@ -19,3 +19,12 @@ target:
 dry_run: false
 verbose: false
 auto_approve: false
+
+# Basic display settings (using defaults)
+display:
+  color_enabled: true
+  theme: dark
+  output_format: table
+  use_icons: true
+  show_progress: true
+  interactive: true

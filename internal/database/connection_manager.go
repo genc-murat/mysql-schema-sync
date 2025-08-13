@@ -7,22 +7,35 @@ import (
 
 // ConnectionManager manages database connections for source and target databases
 type ConnectionManager struct {
-	service  DatabaseService
-	sourceDB *sql.DB
-	targetDB *sql.DB
+	service        DatabaseService
+	sourceDB       *sql.DB
+	targetDB       *sql.DB
+	displayService DisplayService
 }
 
 // NewConnectionManager creates a new connection manager
 func NewConnectionManager() *ConnectionManager {
 	return &ConnectionManager{
-		service: NewService(),
+		service:        NewService(),
+		displayService: nil, // Will be set via SetDisplayService
 	}
 }
 
 // NewConnectionManagerWithService creates a new connection manager with a custom service
 func NewConnectionManagerWithService(service DatabaseService) *ConnectionManager {
 	return &ConnectionManager{
-		service: service,
+		service:        service,
+		displayService: nil, // Will be set via SetDisplayService
+	}
+}
+
+// SetDisplayService sets the display service for visual enhancements
+func (cm *ConnectionManager) SetDisplayService(displayService DisplayService) {
+	cm.displayService = displayService
+
+	// Also set it on the underlying service if it supports it
+	if serviceWithDisplay, ok := cm.service.(*Service); ok {
+		serviceWithDisplay.SetDisplayService(displayService)
 	}
 }
 
@@ -32,12 +45,23 @@ func (cm *ConnectionManager) ConnectToSource(config DatabaseConfig) error {
 		cm.service.Close(cm.sourceDB)
 	}
 
+	if cm.displayService != nil {
+		cm.displayService.Info(fmt.Sprintf("Establishing source database connection..."))
+	}
+
 	db, err := cm.service.Connect(config)
 	if err != nil {
+		if cm.displayService != nil {
+			cm.displayService.Error(fmt.Sprintf("Failed to connect to source database: %v", err))
+		}
 		return fmt.Errorf("failed to connect to source database: %w", err)
 	}
 
 	cm.sourceDB = db
+	if cm.displayService != nil {
+		cm.displayService.Success(fmt.Sprintf("%s Source database connection established",
+			cm.displayService.RenderIconWithColor("success")))
+	}
 	return nil
 }
 
@@ -47,12 +71,23 @@ func (cm *ConnectionManager) ConnectToTarget(config DatabaseConfig) error {
 		cm.service.Close(cm.targetDB)
 	}
 
+	if cm.displayService != nil {
+		cm.displayService.Info(fmt.Sprintf("Establishing target database connection..."))
+	}
+
 	db, err := cm.service.Connect(config)
 	if err != nil {
+		if cm.displayService != nil {
+			cm.displayService.Error(fmt.Sprintf("Failed to connect to target database: %v", err))
+		}
 		return fmt.Errorf("failed to connect to target database: %w", err)
 	}
 
 	cm.targetDB = db
+	if cm.displayService != nil {
+		cm.displayService.Success(fmt.Sprintf("%s Target database connection established",
+			cm.displayService.RenderIconWithColor("success")))
+	}
 	return nil
 }
 
@@ -69,21 +104,45 @@ func (cm *ConnectionManager) GetTargetDB() *sql.DB {
 // TestConnections tests both source and target database connections
 func (cm *ConnectionManager) TestConnections() error {
 	if cm.sourceDB == nil {
-		return fmt.Errorf("source database connection is not established")
+		err := fmt.Errorf("source database connection is not established")
+		if cm.displayService != nil {
+			cm.displayService.Error("Source database connection is not established")
+		}
+		return err
 	}
 
 	if cm.targetDB == nil {
-		return fmt.Errorf("target database connection is not established")
+		err := fmt.Errorf("target database connection is not established")
+		if cm.displayService != nil {
+			cm.displayService.Error("Target database connection is not established")
+		}
+		return err
 	}
 
+	if cm.displayService != nil {
+		cm.displayService.Info("Testing database connections...")
+	}
+
+	// Test source connection
 	if err := cm.service.TestConnection(cm.sourceDB); err != nil {
+		if cm.displayService != nil {
+			cm.displayService.Error(fmt.Sprintf("Source database connection test failed: %v", err))
+		}
 		return fmt.Errorf("source database connection test failed: %w", err)
 	}
 
+	// Test target connection
 	if err := cm.service.TestConnection(cm.targetDB); err != nil {
+		if cm.displayService != nil {
+			cm.displayService.Error(fmt.Sprintf("Target database connection test failed: %v", err))
+		}
 		return fmt.Errorf("target database connection test failed: %w", err)
 	}
 
+	if cm.displayService != nil {
+		cm.displayService.Success(fmt.Sprintf("%s Both database connections are healthy",
+			cm.displayService.RenderIconWithColor("success")))
+	}
 	return nil
 }
 

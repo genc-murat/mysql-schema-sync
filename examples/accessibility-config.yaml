@@ -1,0 +1,75 @@
+# Accessibility-Optimized MySQL Schema Sync Configuration
+# Designed for users with visual impairments or accessibility needs
+
+source:
+  host: localhost
+  port: 3306
+  username: root
+  password: ""
+  database: source_db
+  timeout: 30s
+
+target:
+  host: localhost
+  port: 3306
+  username: root
+  password: ""
+  database: target_db
+  timeout: 30s
+
+# Standard operation settings
+dry_run: false
+verbose: true           # Detailed descriptions for screen readers
+quiet: false
+auto_approve: false
+timeout: 30s
+log_file: ""
+
+# Accessibility-optimized display settings
+display:
+  color_enabled: true     # Colors can help with high contrast themes
+  theme: high-contrast    # High contrast colors for visual impairments
+  output_format: table    # Structured output works well with screen readers
+  use_icons: false        # ASCII alternatives for screen reader compatibility
+  show_progress: true     # Progress indicators provide useful feedback
+  interactive: true       # Interactive prompts with clear descriptions
+  table_style: minimal    # Simple borders reduce screen reader noise
+  max_table_width: 80     # Narrower tables for better screen reader navigation
+
+# Accessibility Features:
+# 1. High contrast theme provides better visibility
+# 2. ASCII icons instead of Unicode for screen reader compatibility
+# 3. Minimal table style reduces visual clutter
+# 4. Verbose mode provides detailed descriptions
+# 5. Structured table output works well with assistive technology
+# 6. Interactive prompts include clear descriptions and options
+
+# Alternative configurations for different accessibility needs:
+
+# For users who prefer no colors:
+# display:
+#   color_enabled: false    # Pure text output
+#   use_icons: false        # ASCII-only indicators
+#   table_style: minimal    # Clean, simple formatting
+
+# For users with narrow screen readers:
+# display:
+#   max_table_width: 60     # Very narrow tables
+#   output_format: compact  # Minimal formatting
+
+# For users who prefer structured data:
+# display:
+#   output_format: yaml     # Well-structured, readable format
+
+# Screen Reader Tips:
+# 1. Use verbose mode for detailed descriptions
+# 2. Table navigation works best with minimal styling
+# 3. Interactive prompts provide clear options and defaults
+# 4. Progress indicators announce completion status
+# 5. Error messages include context and suggestions
+
+# Environment Variables for Accessibility:
+# MYSQL_SCHEMA_SYNC_THEME=high-contrast
+# MYSQL_SCHEMA_SYNC_NO_ICONS=1
+# MYSQL_SCHEMA_SYNC_TABLE_STYLE=minimal
+# MYSQL_SCHEMA_SYNC_MAX_TABLE_WIDTH=80

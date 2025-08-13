@@ -25,8 +25,37 @@ auto_approve: false     # Always require manual approval in production
 timeout: 120s           # Extended timeout for large schemas
 log_file: "/var/log/mysql-schema-sync/sync.log"  # Centralized logging
 
+# Production-optimized display settings
+display:
+  color_enabled: true     # Enable colors for better readability in logs
+  theme: auto             # Auto-detect terminal theme for different environments
+  output_format: table    # Structured output for operations review
+  use_icons: true         # Visual indicators for quick status identification
+  show_progress: true     # Progress tracking for long-running operations
+  interactive: true       # Interactive confirmations for safety
+  table_style: border     # Clear borders for production logs
+  max_table_width: 120    # Standard width for log readability
+
+# Alternative configurations for different production scenarios:
+
+# For automated CI/CD pipelines, consider:
+# display:
+#   color_enabled: false    # Disable colors for log files
+#   output_format: compact  # Minimal output for automation
+#   use_icons: false        # ASCII-only for compatibility
+#   show_progress: false    # No progress bars in non-interactive mode
+#   interactive: false      # No prompts in automation
+#   table_style: minimal    # Clean output for logs
+
+# For high-contrast environments or accessibility:
+# display:
+#   theme: high-contrast    # High contrast colors
+#   use_icons: false        # ASCII alternatives for screen readers
+#   table_style: minimal    # Simple borders for clarity
+
 # Security Notes:
 # 1. Store passwords in environment variables, not in config files
 # 2. Use dedicated database users with minimal required privileges
 # 3. Consider using SSL connections for remote databases
 # 4. Restrict file permissions on this configuration file (chmod 600)
+# 5. Review visual output settings for security-sensitive environments

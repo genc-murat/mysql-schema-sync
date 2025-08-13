@@ -25,6 +25,34 @@ auto_approve: true      # Automatic approval for CI/CD
 timeout: 60s            # Extended timeout for reliability
 log_file: "/tmp/schema-sync-ci.log"  # Temporary log file
 
+# CI/CD optimized display settings
+display:
+  color_enabled: false    # Disable colors for better log parsing
+  theme: auto             # Auto-detect for different CI environments
+  output_format: compact  # Minimal, parseable output for automation
+  use_icons: false        # ASCII-only for maximum compatibility
+  show_progress: false    # No progress bars in non-interactive CI
+  interactive: false      # Disable all interactive prompts
+  table_style: minimal    # Clean, simple output for logs
+  max_table_width: 100    # Narrower width for CI log readability
+
+# Alternative display configurations for different CI scenarios:
+
+# For pull request validation (dry-run mode):
+# display:
+#   color_enabled: true     # Colors help in PR review
+#   output_format: table    # Structured output for review
+#   use_icons: true         # Visual indicators for changes
+#   show_progress: true     # Progress for long validations
+
+# For JSON output to CI tools:
+# display:
+#   output_format: json     # Machine-readable for CI processing
+
+# For YAML reports:
+# display:
+#   output_format: yaml     # Human-readable structured output
+
 # CI/CD Best Practices:
 # 1. Always test schema changes in staging first
 # 2. Use dedicated CI/CD database users with limited privileges
@@ -32,12 +60,20 @@ log_file: "/tmp/schema-sync-ci.log"  # Temporary log file
 # 4. Archive log files for audit purposes
 # 5. Consider running dry-run in a separate pipeline step first
 # 6. Set up monitoring and alerts for failed synchronizations
+# 7. Parse compact output format for automated success/failure detection
+# 8. Use JSON format for integration with CI/CD tools and dashboards
 
 # Environment Variables Required:
 # - MYSQL_SCHEMA_SYNC_SOURCE_PASSWORD
 # - MYSQL_SCHEMA_SYNC_TARGET_PASSWORD
 
-# Example CI/CD Pipeline Step:
+# Example CI/CD Pipeline Steps:
 # script:
-#   - mysql-schema-sync --config=ci-cd-config.yaml --dry-run  # Preview step
-#   - mysql-schema-sync --config=ci-cd-config.yaml            # Apply step
+#   # Preview step with enhanced visual output for logs
+#   - mysql-schema-sync --config=ci-cd-config.yaml --dry-run --format=table --color
+#   
+#   # Apply step with compact output for parsing
+#   - mysql-schema-sync --config=ci-cd-config.yaml --format=compact --no-color
+#   
+#   # Generate JSON report for CI tools
+#   - mysql-schema-sync --config=ci-cd-config.yaml --dry-run --format=json > schema-changes.json

@@ -5,6 +5,7 @@ import (
 	"mysql-schema-sync/internal/application"
 	"mysql-schema-sync/internal/database"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -36,32 +37,51 @@ var (
 	autoApprove bool
 	timeout     time.Duration
 	logFile     string
+
+	// Display flags
+	noColor       bool
+	theme         string
+	outputFormat  string
+	noIcons       bool
+	noProgress    bool
+	noInteractive bool
+	tableStyle    string
+	maxTableWidth int
 )
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "mysql-schema-sync",
-	Short: "A CLI tool to synchronize MySQL database schemas",
+	Short: "A CLI tool to synchronize MySQL database schemas with enhanced visual output",
 	Long: `MySQL Schema Sync is a CLI application that compares two MySQL databases
-(source and target) to detect schema differences, presents a summary of changes,
-and applies approved changes to the target database.
+(source and target) to detect schema differences, presents a summary of changes
+with enhanced visual formatting, and applies approved changes to the target database.
+
+Features include colorized output, progress indicators, interactive confirmations,
+multiple output formats, and accessibility support with graceful fallbacks.
 
 Examples:
-  # Compare schemas using command line flags
+  # Basic schema comparison with enhanced visual output
   mysql-schema-sync --source-host=localhost --source-user=root --source-db=source_db \
                     --target-host=localhost --target-user=root --target-db=target_db
 
-  # Use configuration file
-  mysql-schema-sync --config=config.yaml
+  # Use configuration file with custom theme
+  mysql-schema-sync --config=config.yaml --theme=light
 
-  # Dry run mode (show changes without applying)
-  mysql-schema-sync --config=config.yaml --dry-run
+  # Dry run with JSON output format
+  mysql-schema-sync --config=config.yaml --dry-run --format=json
 
-  # Auto-approve changes (no confirmation prompt)
-  mysql-schema-sync --config=config.yaml --auto-approve
+  # Compact output for scripting (no colors, minimal formatting)
+  mysql-schema-sync --config=config.yaml --format=compact --no-color --no-progress
 
-  # Verbose output
-  mysql-schema-sync --config=config.yaml --verbose`,
+  # High contrast mode for accessibility
+  mysql-schema-sync --config=config.yaml --theme=high-contrast --no-icons
+
+  # Verbose output with custom table styling
+  mysql-schema-sync --config=config.yaml --verbose --table-style=rounded
+
+  # Non-interactive mode for automation
+  mysql-schema-sync --config=config.yaml --auto-approve --no-interactive`,
 	RunE: runSchemaSync,
 }
 
@@ -102,6 +122,16 @@ func init() {
 	rootCmd.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "database operation timeout")
 	rootCmd.Flags().StringVar(&logFile, "log-file", "", "write logs to file instead of stdout")
 
+	// Display flags
+	rootCmd.Flags().BoolVar(&noColor, "no-color", false, "disable color output")
+	rootCmd.Flags().StringVar(&theme, "theme", "dark", "color theme (dark, light, high-contrast, auto)")
+	rootCmd.Flags().StringVar(&outputFormat, "format", "table", "output format (table, json, yaml, compact)")
+	rootCmd.Flags().BoolVar(&noIcons, "no-icons", false, "disable Unicode icons")
+	rootCmd.Flags().BoolVar(&noProgress, "no-progress", false, "disable progress indicators")
+	rootCmd.Flags().BoolVar(&noInteractive, "no-interactive", false, "disable interactive prompts")
+	rootCmd.Flags().StringVar(&tableStyle, "table-style", "default", "table style (default, rounded, border, minimal)")
+	rootCmd.Flags().IntVar(&maxTableWidth, "max-table-width", 120, "maximum table width (40-300)")
+
 	// Bind flags to viper
 	viper.BindPFlag("source.host", rootCmd.Flags().Lookup("source-host"))
 	viper.BindPFlag("source.port", rootCmd.Flags().Lookup("source-port"))
@@ -121,6 +151,12 @@ func init() {
 	viper.BindPFlag("auto_approve", rootCmd.Flags().Lookup("auto-approve"))
 	viper.BindPFlag("timeout", rootCmd.Flags().Lookup("timeout"))
 	viper.BindPFlag("log_file", rootCmd.Flags().Lookup("log-file"))
+
+	// Bind display flags (only non-inverted ones)
+	viper.BindPFlag("display.theme", rootCmd.Flags().Lookup("theme"))
+	viper.BindPFlag("display.output_format", rootCmd.Flags().Lookup("format"))
+	viper.BindPFlag("display.table_style", rootCmd.Flags().Lookup("table-style"))
+	viper.BindPFlag("display.max_table_width", rootCmd.Flags().Lookup("max-table-width"))
 
 	// Mark required flags when not using config file
 	rootCmd.MarkFlagsRequiredTogether("source-host", "source-user", "source-db", "target-host", "target-user", "target-db")
@@ -194,6 +230,68 @@ func validateFlags(cmd *cobra.Command) error {
 	return nil
 }
 
+// validateDisplayConfig validates display configuration options
+func validateDisplayConfig(config *application.DisplayConfig) error {
+	var errs []error
+
+	// Validate theme
+	validThemes := []string{"dark", "light", "high-contrast", "auto"}
+	if !contains(validThemes, config.Theme) {
+		errs = append(errs, fmt.Errorf("invalid theme '%s', must be one of: %s", config.Theme, strings.Join(validThemes, ", ")))
+	}
+
+	// Validate output format
+	validFormats := []string{"table", "json", "yaml", "compact"}
+	if !contains(validFormats, config.OutputFormat) {
+		errs = append(errs, fmt.Errorf("invalid output format '%s', must be one of: %s", config.OutputFormat, strings.Join(validFormats, ", ")))
+	}
+
+	// Validate table style
+	validTableStyles := []string{"default", "rounded", "border", "minimal"}
+	if !contains(validTableStyles, config.TableStyle) {
+		errs = append(errs, fmt.Errorf("invalid table style '%s', must be one of: %s", config.TableStyle, strings.Join(validTableStyles, ", ")))
+	}
+
+	// Validate max table width
+	if config.MaxTableWidth < 40 || config.MaxTableWidth > 300 {
+		errs = append(errs, fmt.Errorf("max table width must be between 40 and 300, got %d", config.MaxTableWidth))
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("validation errors: %v", errs)
+	}
+
+	return nil
+}
+
+// contains checks if a slice contains a string
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
+}
+
+// setDisplayDefaults sets default values for display configuration
+func setDisplayDefaults(config *application.DisplayConfig) {
+	if config.Theme == "" {
+		config.Theme = "dark"
+	}
+	if config.OutputFormat == "" {
+		config.OutputFormat = "table"
+	}
+	if config.TableStyle == "" {
+		config.TableStyle = "default"
+	}
+	if config.MaxTableWidth == 0 {
+		config.MaxTableWidth = 120
+	}
+	// Set default boolean values if not explicitly set
+	// Note: viper will handle these from config file or environment variables
+}
+
 // buildConfig builds the application configuration from CLI flags and config file
 func buildConfig(cmd *cobra.Command) (*application.Config, error) {
 	// Create configuration structure
@@ -256,6 +354,34 @@ func buildConfig(cmd *cobra.Command) (*application.Config, error) {
 		config.LogFile = logFile
 	}
 
+	// Set display defaults if not loaded from config
+	setDisplayDefaults(&config.Display)
+
+	// Override with CLI flags if provided (handle inverted flags)
+	if cmd.Flags().Changed("no-color") {
+		config.Display.ColorEnabled = !noColor
+	} else if !viper.IsSet("display.color_enabled") {
+		config.Display.ColorEnabled = true // Default to enabled
+	}
+
+	if cmd.Flags().Changed("no-icons") {
+		config.Display.UseIcons = !noIcons
+	} else if !viper.IsSet("display.use_icons") {
+		config.Display.UseIcons = true // Default to enabled
+	}
+
+	if cmd.Flags().Changed("no-progress") {
+		config.Display.ShowProgress = !noProgress
+	} else if !viper.IsSet("display.show_progress") {
+		config.Display.ShowProgress = true // Default to enabled
+	}
+
+	if cmd.Flags().Changed("no-interactive") {
+		config.Display.InteractiveMode = !noInteractive
+	} else if !viper.IsSet("display.interactive") {
+		config.Display.InteractiveMode = true // Default to enabled
+	}
+
 	// Set default timeout if not specified
 	if config.Timeout == 0 {
 		config.Timeout = 30 * time.Second
@@ -280,6 +406,11 @@ func buildConfig(cmd *cobra.Command) (*application.Config, error) {
 
 	if err := cliConfig.Validate(); err != nil {
 		return nil, fmt.Errorf("configuration validation failed: %w", err)
+	}
+
+	// Validate display configuration
+	if err := validateDisplayConfig(&config.Display); err != nil {
+		return nil, fmt.Errorf("display configuration validation failed: %w", err)
 	}
 
 	return config, nil
@@ -329,7 +460,37 @@ Examples:
 Available Commands:{{range .Commands}}{{if (or .IsAvailableCommand (eq .Name "help"))}}
   {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}
 
-Flags:
+Database Connection Flags:
+  --source-host string      Source database host
+  --source-port int         Source database port (default 3306)
+  --source-user string      Source database username
+  --source-password string  Source database password
+  --source-db string        Source database name
+  --target-host string      Target database host
+  --target-port int         Target database port (default 3306)
+  --target-user string      Target database username
+  --target-password string  Target database password
+  --target-db string        Target database name
+
+Operation Flags:
+  --config string           Configuration file path
+  --dry-run                 Show changes without applying them
+  -v, --verbose             Enable verbose output
+  -q, --quiet               Suppress non-error output
+  --auto-approve            Automatically approve changes without confirmation
+  --timeout duration        Database operation timeout (default 30s)
+  --log-file string         Write logs to file instead of stdout
+
+Visual Enhancement Flags:
+  --no-color                Disable color output
+  --theme string            Color theme: dark, light, high-contrast, auto (default "dark")
+  --format string           Output format: table, json, yaml, compact (default "table")
+  --no-icons                Disable Unicode icons (use ASCII alternatives)
+  --no-progress             Disable progress indicators and spinners
+  --no-interactive          Disable interactive prompts and confirmations
+  --table-style string      Table style: default, rounded, border, minimal (default "default")
+  --max-table-width int     Maximum table width in characters (40-300) (default 120)
+
 {{.LocalFlags.FlagUsages}}{{end}}{{if .HasAvailableInheritedFlags}}
 
 Global Flags:
@@ -341,7 +502,9 @@ Additional help topics:{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
 Use "{{.CommandPath}} [command] --help" for more information about a command.{{end}}
 
 Configuration File:
-  You can use a YAML configuration file instead of command-line flags:
+  Generate a sample configuration file with: mysql-schema-sync config
+  
+  Complete configuration example:
   
   source:
     host: localhost
@@ -349,19 +512,56 @@ Configuration File:
     username: root
     password: secret
     database: source_db
+    timeout: 30s
   target:
     host: localhost
     port: 3306
     username: root
     password: secret
     database: target_db
+    timeout: 30s
   dry_run: false
   verbose: false
   auto_approve: false
+  timeout: 30s
+  log_file: ""
+  display:
+    color_enabled: true        # Enable colorized output
+    theme: dark               # Color theme (dark, light, high-contrast, auto)
+    output_format: table      # Output format (table, json, yaml, compact)
+    use_icons: true           # Enable Unicode icons with ASCII fallbacks
+    show_progress: true       # Show progress bars and spinners
+    interactive: true         # Enable interactive confirmations
+    table_style: default      # Table styling (default, rounded, border, minimal)
+    max_table_width: 120      # Maximum table width (40-300)
+
+Visual Themes:
+  dark           - Dark theme with bright colors (default)
+  light          - Light theme with darker colors
+  high-contrast  - High contrast theme for accessibility
+  auto           - Automatically detect terminal theme
+
+Output Formats:
+  table          - Formatted tables with colors and styling (default)
+  json           - Machine-readable JSON output
+  yaml           - Human-readable YAML output
+  compact        - Minimal output for scripting and automation
 
 Environment Variables:
   All configuration options can be set via environment variables with the prefix MYSQL_SCHEMA_SYNC_
-  Example: MYSQL_SCHEMA_SYNC_SOURCE_HOST=localhost
+  Examples:
+    MYSQL_SCHEMA_SYNC_SOURCE_HOST=localhost
+    MYSQL_SCHEMA_SYNC_THEME=light
+    MYSQL_SCHEMA_SYNC_FORMAT=json
+    MYSQL_SCHEMA_SYNC_NO_COLOR=1
+    MYSQL_SCHEMA_SYNC_NO_ICONS=1
+
+Accessibility Features:
+  - Automatic color detection and graceful fallback to plain text
+  - Unicode icon fallback to ASCII characters
+  - High contrast theme for visual impairments
+  - Screen reader friendly output in compact format
+  - Configurable table width for narrow terminals
 `
 }
 
@@ -401,32 +601,95 @@ func createConfigCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "config",
 		Short: "Generate a sample configuration file",
-		Long:  "Generate a sample configuration file that can be used with the --config flag",
+		Long: `Generate a sample configuration file that can be used with the --config flag.
+
+This command outputs a complete configuration template with all available options
+including the new visual enhancement settings. You can redirect the output to a
+file and customize it for your environment.
+
+Examples:
+  # Generate basic config file
+  mysql-schema-sync config > config.yaml
+  
+  # Generate config with comments for all options
+  mysql-schema-sync config > my-config.yaml`,
 		Run: func(cmd *cobra.Command, args []string) {
 			sampleConfig := `# MySQL Schema Sync Configuration File
-source:
-  host: localhost
-  port: 3306
-  username: root
-  password: ""
-  database: source_db
-  timeout: 30s
+# Complete configuration template with all available options
 
+# Source database connection
+source:
+  host: localhost          # Source database hostname or IP
+  port: 3306              # Source database port
+  username: root          # Source database username
+  password: ""            # Source database password (use env var for security)
+  database: source_db     # Source database name
+  timeout: 30s            # Connection timeout for source database
+
+# Target database connection
 target:
-  host: localhost
-  port: 3306
-  username: root
-  password: ""
-  database: target_db
-  timeout: 30s
+  host: localhost          # Target database hostname or IP
+  port: 3306              # Target database port
+  username: root          # Target database username
+  password: ""            # Target database password (use env var for security)
+  database: target_db     # Target database name
+  timeout: 30s            # Connection timeout for target database
 
 # Operation settings
-dry_run: false      # Show changes without applying them
-verbose: false      # Enable verbose output
-quiet: false        # Suppress non-error output
-auto_approve: false # Automatically approve changes without confirmation
-timeout: 30s        # Global timeout for operations
-log_file: ""        # Optional log file path
+dry_run: false            # Show changes without applying them
+verbose: false            # Enable verbose output with detailed information
+quiet: false              # Suppress non-error output (mutually exclusive with verbose)
+auto_approve: false       # Automatically approve changes without confirmation
+timeout: 30s              # Global timeout for operations
+log_file: ""              # Optional log file path (empty = stdout)
+
+# Visual enhancement settings
+display:
+  # Color and theming
+  color_enabled: true     # Enable colorized output
+  theme: dark             # Color theme options:
+                         #   - dark: Dark theme with bright colors (default)
+                         #   - light: Light theme with darker colors
+                         #   - high-contrast: High contrast for accessibility
+                         #   - auto: Automatically detect terminal theme
+  
+  # Output formatting
+  output_format: table    # Output format options:
+                         #   - table: Formatted tables with colors (default)
+                         #   - json: Machine-readable JSON output
+                         #   - yaml: Human-readable YAML output
+                         #   - compact: Minimal output for scripting
+  
+  # Visual elements
+  use_icons: true         # Enable Unicode icons with ASCII fallbacks
+  show_progress: true     # Show progress bars and loading spinners
+  interactive: true       # Enable interactive confirmations and prompts
+  
+  # Table formatting
+  table_style: default    # Table style options:
+                         #   - default: Standard ASCII table borders
+                         #   - rounded: Rounded corners (Unicode required)
+                         #   - border: Heavy borders for emphasis
+                         #   - minimal: Minimal borders for clean look
+  max_table_width: 120    # Maximum table width in characters (40-300)
+
+# Security recommendations:
+# 1. Store passwords in environment variables:
+#    export MYSQL_SCHEMA_SYNC_SOURCE_PASSWORD=your_password
+#    export MYSQL_SCHEMA_SYNC_TARGET_PASSWORD=your_password
+# 2. Set restrictive file permissions: chmod 600 config.yaml
+# 3. Use dedicated database users with minimal required privileges
+# 4. Consider SSL connections for remote databases
+
+# Environment variable examples:
+# MYSQL_SCHEMA_SYNC_SOURCE_HOST=prod-db.example.com
+# MYSQL_SCHEMA_SYNC_TARGET_HOST=staging-db.example.com
+# MYSQL_SCHEMA_SYNC_THEME=light
+# MYSQL_SCHEMA_SYNC_FORMAT=json
+# MYSQL_SCHEMA_SYNC_NO_COLOR=1
+# MYSQL_SCHEMA_SYNC_NO_ICONS=1
+# MYSQL_SCHEMA_SYNC_NO_PROGRESS=1
+# MYSQL_SCHEMA_SYNC_NO_INTERACTIVE=1
 `
 			fmt.Print(sampleConfig)
 		},

@@ -1,6 +1,6 @@
 # Configuration Examples
 
-This directory contains example configuration files for different use cases of MySQL Schema Sync.
+This directory contains example configuration files and usage documentation for different use cases of MySQL Schema Sync, including the new visual enhancement features.
 
 ## Available Examples
 
@@ -11,41 +11,65 @@ A minimal configuration for local development with two local MySQL databases.
 
 **Features**:
 - Simple localhost connections
-- Basic settings only
-- No advanced features
+- Basic settings with default visual enhancements
+- Colorized output and progress indicators
 
 ### development-config.yaml
-Configuration optimized for development workflow with safety features.
+Configuration optimized for development workflow with enhanced visual features.
 
 **Use case**: Development environment, staging to local sync
 
 **Features**:
 - Dry-run enabled by default
-- Verbose logging
-- Manual approval required
-- Local log file
+- Verbose logging with enhanced formatting
+- Rounded table styling for modern terminals
+- Interactive confirmations with visual indicators
 
 ### production-config.yaml
-Production-ready configuration with comprehensive settings and security considerations.
+Production-ready configuration with comprehensive settings and visual options.
 
 **Use case**: Production deployments, critical environments
 
 **Features**:
-- Extended timeouts
-- Centralized logging
+- Auto-theme detection for different environments
+- Structured table output for operations review
+- Alternative configurations for CI/CD and accessibility
 - Security best practices
-- Environment variable usage
 
 ### ci-cd-config.yaml
-Configuration designed for automated CI/CD pipelines.
+Configuration designed for automated CI/CD pipelines with automation-friendly output.
 
 **Use case**: Automated deployments, continuous integration
 
 **Features**:
-- Auto-approval enabled
-- Detailed logging for audit
-- Environment variable integration
-- Pipeline-friendly settings
+- Compact output format for log parsing
+- Disabled colors and interactive elements
+- ASCII-only compatibility
+- JSON/YAML output options for CI tools
+
+### accessibility-config.yaml
+Configuration optimized for users with accessibility needs.
+
+**Use case**: Visual impairments, screen readers, accessibility requirements
+
+**Features**:
+- High contrast color theme
+- ASCII icons for screen reader compatibility
+- Minimal table styling
+- Narrow table width for better navigation
+
+## Documentation Files
+
+### usage-examples.md
+Comprehensive examples showing different ways to use mysql-schema-sync with visual enhancements.
+
+**Contents**:
+- Basic usage patterns
+- Visual enhancement options
+- Output format examples
+- Accessibility configurations
+- Automation and scripting examples
+- Terminal compatibility guide
 
 ## Usage
 
@@ -102,6 +126,16 @@ export MYSQL_SCHEMA_SYNC_TARGET_PASSWORD=secret
 export MYSQL_SCHEMA_SYNC_DRY_RUN=true
 export MYSQL_SCHEMA_SYNC_VERBOSE=true
 export MYSQL_SCHEMA_SYNC_AUTO_APPROVE=false
+
+# Visual enhancement settings
+export MYSQL_SCHEMA_SYNC_THEME=light
+export MYSQL_SCHEMA_SYNC_FORMAT=json
+export MYSQL_SCHEMA_SYNC_NO_COLOR=1
+export MYSQL_SCHEMA_SYNC_NO_ICONS=1
+export MYSQL_SCHEMA_SYNC_NO_PROGRESS=1
+export MYSQL_SCHEMA_SYNC_NO_INTERACTIVE=1
+export MYSQL_SCHEMA_SYNC_TABLE_STYLE=rounded
+export MYSQL_SCHEMA_SYNC_MAX_TABLE_WIDTH=140
 ```
 
 ## Customization

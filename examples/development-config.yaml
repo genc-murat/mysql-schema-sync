@@ -25,8 +25,20 @@ auto_approve: false     # Always review changes manually
 timeout: 30s            # Standard timeout for development
 log_file: "schema-sync-dev.log"  # Local log file
 
+# Development-optimized display settings
+display:
+  color_enabled: true     # Enable colors for better readability
+  theme: dark             # Dark theme for terminal development
+  output_format: table    # Structured table output for review
+  use_icons: true         # Visual icons for quick identification
+  show_progress: true     # Progress indicators for long operations
+  interactive: true       # Interactive confirmations for safety
+  table_style: rounded    # Rounded tables for modern look
+  max_table_width: 140    # Wider tables for development screens
+
 # Development Workflow:
 # 1. Run with dry_run: true to preview changes
-# 2. Review the proposed changes carefully
+# 2. Review the proposed changes carefully using the enhanced visual output
 # 3. Set dry_run: false and run again to apply changes
 # 4. Test your application with the updated schema
+# 5. Use verbose mode to see detailed progress and debug information
