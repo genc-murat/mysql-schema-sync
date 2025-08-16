@@ -1,0 +1,250 @@
+# CI/CD Pipeline Backup Configuration
+# This configuration is optimized for automated CI/CD pipelines
+# with emphasis on reliability and automation.
+
+database:
+  host: ${CI_DB_HOST}
+  port: ${CI_DB_PORT:-3306}
+  username: ${CI_DB_USERNAME}
+  password: ${CI_DB_PASSWORD}
+  database: ${CI_DB_NAME}
+  
+  # Shorter timeouts for CI/CD
+  connection_timeout: "10s"
+  read_timeout: "30s"
+
+backup:
+  enabled: true
+  
+  # Cloud storage for CI/CD artifacts
+  storage:
+    provider: s3
+    s3:
+      bucket: ${CI_BACKUP_BUCKET}
+      region: ${AWS_REGION}
+      access_key: ${AWS_ACCESS_KEY_ID}
+      secret_key: ${AWS_SECRET_ACCESS_KEY}
+      prefix: "ci-cd-backups/${CI_PIPELINE_ID}/"
+      
+      # Optimized for CI/CD speed
+      multipart_threshold: "32MB"
+      multipart_chunksize: "8MB"
+      max_concurrency: 8
+  
+  # CI/CD specific retention
+  retention:
+    max_backups: 20         # Keep recent pipeline backups
+    max_age: "168h"         # 7 days
+    cleanup_interval: "1h"
+    keep_daily: 7
+    keep_weekly: 2
+    keep_monthly: 0         # No monthly retention for CI/CD
+    
+    # Tag-based retention
+    tag_based_retention:
+      - tags:
+          pipeline_type: "release"
+        max_age: "720h"     # Keep release backups for 30 days
+      - tags:
+          pipeline_type: "hotfix"
+        max_age: "336h"     # Keep hotfix backups for 14 days
+  
+  # Balanced compression for CI/CD
+  compression:
+    enabled: true
+    algorithm: "lz4"        # Fast compression for CI/CD speed
+    level: 3                # Balanced compression/speed
+    threshold: 5120         # Compress files larger than 5KB
+  
+  # Encryption for CI/CD security
+  encryption:
+    enabled: true
+    algorithm: "aes256"
+    key_source: "env"
+    key_env_var: "CI_BACKUP_ENCRYPTION_KEY"
+    rotation_enabled: false  # Disable rotation in CI/CD
+  
+  # Fast validation for CI/CD
+  validation:
+    enabled: true
+    checksum_algorithm: "sha256"
+    validate_on_create: true
+    validate_on_restore: false  # Skip for CI/CD speed
+    dry_run_validation: false   # Skip for CI/CD speed
+    validation_timeout: "2m"
+  
+  # Structured logging for CI/CD
+  logging:
+    enable_audit_log: true
+    audit_log_path: "/tmp/ci-backup-audit.log"
+    log_level: "INFO"
+    log_file: "/tmp/ci-backup.log"
+    
+    # CI/CD specific log format
+    log_format: "json"
+    include_pipeline_info: true
+  
+  # CI/CD performance optimization
+  performance:
+    parallel_operations: true
+    max_workers: 6
+    buffer_size: "64MB"
+    streaming: true
+    
+    # Timeout settings for CI/CD
+    operation_timeout: "10m"
+    connection_timeout: "30s"
+
+# Migration settings for CI/CD
+migration:
+  auto_backup: true
+  backup_description: "CI/CD Pipeline ${CI_PIPELINE_ID} - ${CI_COMMIT_SHA:0:8}"
+  
+  # CI/CD specific tags
+  backup_tags:
+    pipeline_id: "${CI_PIPELINE_ID}"
+    commit_sha: "${CI_COMMIT_SHA}"
+    branch: "${CI_COMMIT_REF_NAME}"
+    pipeline_type: "${CI_PIPELINE_TYPE:-feature}"
+    environment: "${CI_ENVIRONMENT_NAME:-staging}"
+    build_number: "${CI_PIPELINE_IID}"
+  
+  # Automated settings for CI/CD
+  require_confirmation: false   # No manual confirmation in CI/CD
+  dry_run_first: true          # Always dry run first
+  
+  # Rollback settings for CI/CD
+  rollback:
+    auto_rollback_on_failure: true   # Auto rollback on failure
+    rollback_timeout: "15m"
+    
+    # Rollback conditions
+    rollback_conditions:
+      - validation_failure: true
+      - migration_timeout: true
+      - critical_error: true
+
+# Display settings for CI/CD (machine-readable)
+display:
+  show_progress: false
+  verbose: false
+  color_output: false
+  format: "json"
+  
+  # CI/CD specific output
+  include_timing: true
+  include_metrics: true
+
+# CI/CD Integration settings
+ci_cd:
+  # Pipeline integration
+  pipeline:
+    fail_on_backup_failure: true
+    fail_on_validation_failure: true
+    export_backup_id: true
+    
+    # Artifact settings
+    artifacts:
+      backup_logs: true
+      backup_metadata: true
+      rollback_plans: true
+  
+  # Environment-specific settings
+  environments:
+    staging:
+      auto_rollback: true
+      validation_level: "basic"
+    production:
+      auto_rollback: false
+      validation_level: "comprehensive"
+      require_manual_approval: true
+
+# Notification settings for CI/CD
+notifications:
+  enabled: true
+  
+  # CI/CD platform integration
+  gitlab:
+    project_id: ${CI_PROJECT_ID}
+    token: ${GITLAB_TOKEN}
+    
+  github:
+    repository: ${GITHUB_REPOSITORY}
+    token: ${GITHUB_TOKEN}
+  
+  # Slack integration for CI/CD
+  slack:
+    webhook_url: ${SLACK_WEBHOOK_URL}
+    channel: "#deployments"
+    username: "CI/CD Pipeline"
+    
+    # CI/CD specific message format
+    message_template: |
+      Pipeline ${CI_PIPELINE_ID} backup status: {{status}}
+      Branch: ${CI_COMMIT_REF_NAME}
+      Commit: ${CI_COMMIT_SHA:0:8}
+      Environment: ${CI_ENVIRONMENT_NAME}
+      Backup ID: {{backup_id}}
+  
+  # Notification triggers for CI/CD
+  triggers:
+    backup_created: false       # Don't notify on every backup
+    backup_failed: true
+    rollback_executed: true
+    validation_failed: true
+    pipeline_completed: true
+
+# Health checks for CI/CD
+health_checks:
+  enabled: true
+  
+  # Pre-pipeline health check
+  pre_pipeline:
+    check_storage_connectivity: true
+    check_database_connectivity: true
+    check_encryption_keys: true
+    validate_configuration: true
+  
+  # Post-pipeline health check
+  post_pipeline:
+    validate_backup_integrity: true
+    check_rollback_capability: true
+    verify_cleanup_completion: true
+
+# Monitoring for CI/CD
+monitoring:
+  enabled: true
+  
+  # Metrics collection
+  metrics:
+    backup_duration: true
+    backup_size: true
+    compression_ratio: true
+    validation_time: true
+    
+    # CI/CD specific metrics
+    pipeline_success_rate: true
+    rollback_frequency: true
+    storage_usage_trend: true
+  
+  # Export metrics to CI/CD platform
+  export_to_ci_cd: true
+  metrics_format: "prometheus"
+
+# Security settings for CI/CD
+security:
+  # Secure handling of secrets
+  secrets:
+    mask_in_logs: true
+    rotate_on_exposure: true
+    
+  # Access control for CI/CD
+  access_control:
+    service_account_only: true
+    restrict_to_pipeline: true
+    
+  # Audit requirements
+  audit:
+    log_all_operations: true
+    include_user_context: true
+    retention_period: "1y"

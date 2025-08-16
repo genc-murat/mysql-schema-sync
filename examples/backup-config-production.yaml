@@ -1,0 +1,192 @@
+# Production Environment Backup Configuration
+# This configuration is optimized for production environments with
+# emphasis on security, durability, and compliance.
+
+database:
+  host: ${DB_HOST}
+  port: ${DB_PORT:-3306}
+  username: ${DB_USERNAME}
+  password: ${DB_PASSWORD}
+  database: ${DB_NAME}
+  
+  # Connection pool settings for production
+  connection_pool:
+    max_connections: 10
+    connection_timeout: "30s"
+    read_timeout: "60s"
+
+backup:
+  enabled: true
+  
+  # AWS S3 storage for production
+  storage:
+    provider: s3
+    s3:
+      bucket: ${BACKUP_S3_BUCKET}
+      region: ${AWS_REGION:-us-west-2}
+      access_key: ${AWS_ACCESS_KEY_ID}
+      secret_key: ${AWS_SECRET_ACCESS_KEY}
+      prefix: "mysql-schema-sync/"
+      
+      # S3 optimization settings
+      multipart_threshold: "64MB"
+      multipart_chunksize: "16MB"
+      max_concurrency: 10
+      use_accelerate_endpoint: true
+      
+      # S3 storage class for cost optimization
+      storage_class: "STANDARD_IA"  # Infrequent Access for backups
+  
+  # Comprehensive retention policy
+  retention:
+    max_backups: 100
+    max_age: "2160h"        # 90 days
+    cleanup_interval: "6h"
+    keep_daily: 30          # Keep daily backups for 30 days
+    keep_weekly: 12         # Keep weekly backups for 3 months
+    keep_monthly: 24        # Keep monthly backups for 2 years
+  
+  # High compression for storage efficiency
+  compression:
+    enabled: true
+    algorithm: "zstd"       # Best compression ratio
+    level: 6                # Balanced compression/speed
+    threshold: 10240        # Compress files larger than 10KB
+  
+  # Strong encryption for production
+  encryption:
+    enabled: true
+    algorithm: "aes256"
+    key_source: "env"
+    key_env_var: "BACKUP_ENCRYPTION_KEY"
+    rotation_enabled: true
+    rotation_days: 90
+    
+    # Key derivation settings
+    key_derivation:
+      iterations: 100000
+      salt_length: 32
+  
+  # Comprehensive validation
+  validation:
+    enabled: true
+    checksum_algorithm: "sha256"
+    validate_on_create: true
+    validate_on_restore: true
+    dry_run_validation: true
+    validation_timeout: "10m"
+    
+    # Additional validation checks
+    enable_integrity_checks: true
+    enable_checksum_validation: true
+    enable_completeness_check: true
+  
+  # Comprehensive logging and auditing
+  logging:
+    enable_audit_log: true
+    audit_log_path: "/var/log/mysql-schema-sync/audit.log"
+    log_level: "INFO"
+    log_file: "/var/log/mysql-schema-sync/backup.log"
+    
+    # Log rotation
+    log_rotation:
+      max_size: "100MB"
+      max_files: 10
+      compress: true
+  
+  # Monitoring and alerting
+  monitoring:
+    enable_metrics: true
+    metrics_endpoint: "http://prometheus:9090/metrics"
+    
+    # Health check settings
+    health_check:
+      interval: "5m"
+      timeout: "30s"
+      failure_threshold: 3
+    
+    # Alert settings
+    alerts:
+      webhook_url: ${ALERT_WEBHOOK_URL}
+      email_recipients:
+        - "ops-team@company.com"
+        - "dba-team@company.com"
+  
+  # Performance optimization
+  performance:
+    parallel_operations: true
+    max_workers: 4
+    buffer_size: "128MB"
+    streaming: true
+    
+    # Connection pooling
+    connection_pool:
+      max_connections: 5
+      idle_timeout: "5m"
+  
+  # Security settings
+  security:
+    file_permissions: "0600"
+    directory_permissions: "0700"
+    
+    # Access control
+    access_control:
+      require_authentication: true
+      allowed_users:
+        - "backup-service"
+        - "ops-team"
+      
+    # Compliance settings
+    compliance:
+      enable_gdpr_compliance: true
+      enable_hipaa_compliance: true
+      data_retention_days: 2555  # 7 years for compliance
+      require_encryption: true
+      require_audit_log: true
+
+# Migration settings for production
+migration:
+  auto_backup: true
+  backup_description: "Pre-migration backup - ${RELEASE_VERSION:-unknown}"
+  
+  # Safety settings
+  require_confirmation: true
+  dry_run_first: true
+  
+  # Rollback settings
+  rollback:
+    auto_rollback_on_failure: false  # Manual rollback in production
+    rollback_timeout: "30m"
+
+# Display settings for production (minimal output)
+display:
+  show_progress: false      # Disable for automated deployments
+  verbose: false
+  color_output: false
+  format: "json"           # Machine-readable output
+
+# Notification settings
+notifications:
+  enabled: true
+  
+  # Slack notifications
+  slack:
+    webhook_url: ${SLACK_WEBHOOK_URL}
+    channel: "#ops-alerts"
+    username: "MySQL Schema Sync"
+    
+  # Email notifications
+  email:
+    smtp_server: ${SMTP_SERVER}
+    smtp_port: ${SMTP_PORT:-587}
+    username: ${SMTP_USERNAME}
+    password: ${SMTP_PASSWORD}
+    from: "mysql-schema-sync@company.com"
+    
+  # Notification triggers
+  triggers:
+    backup_created: true
+    backup_failed: true
+    rollback_executed: true
+    validation_failed: true
+    storage_quota_warning: true

@@ -1,0 +1,442 @@
+# High Availability Backup Configuration
+# This configuration is designed for high-availability environments
+# with multiple storage providers and advanced redundancy features.
+
+database:
+  # Primary database connection
+  primary:
+    host: ${PRIMARY_DB_HOST}
+    port: ${PRIMARY_DB_PORT:-3306}
+    username: ${PRIMARY_DB_USERNAME}
+    password: ${PRIMARY_DB_PASSWORD}
+    database: ${DB_NAME}
+  
+  # Read replica for backup operations (reduces load on primary)
+  replica:
+    host: ${REPLICA_DB_HOST}
+    port: ${REPLICA_DB_PORT:-3306}
+    username: ${REPLICA_DB_USERNAME}
+    password: ${REPLICA_DB_PASSWORD}
+    database: ${DB_NAME}
+    
+    # Replica lag tolerance
+    max_lag_seconds: 30
+    
+  # Connection settings for HA
+  connection:
+    max_connections: 20
+    connection_timeout: "45s"
+    read_timeout: "120s"
+    retry_attempts: 3
+    retry_delay: "5s"
+
+backup:
+  enabled: true
+  
+  # Multi-provider storage for redundancy
+  storage:
+    # Primary storage provider
+    primary:
+      provider: s3
+      s3:
+        bucket: ${PRIMARY_BACKUP_BUCKET}
+        region: ${PRIMARY_AWS_REGION}
+        access_key: ${PRIMARY_AWS_ACCESS_KEY_ID}
+        secret_key: ${PRIMARY_AWS_SECRET_ACCESS_KEY}
+        prefix: "primary-backups/"
+        storage_class: "STANDARD"
+        
+        # S3 optimization for HA
+        multipart_threshold: "100MB"
+        multipart_chunksize: "20MB"
+        max_concurrency: 15
+        use_accelerate_endpoint: true
+    
+    # Secondary storage provider for redundancy
+    secondary:
+      provider: azure
+      azure:
+        account_name: ${AZURE_STORAGE_ACCOUNT}
+        account_key: ${AZURE_STORAGE_KEY}
+        container_name: "backup-secondary"
+        
+        # Azure optimization
+        connection_timeout: 300
+        read_timeout: 300
+        retry_attempts: 5
+    
+    # Tertiary storage for disaster recovery
+    tertiary:
+      provider: gcs
+      gcs:
+        bucket: ${GCS_BACKUP_BUCKET}
+        credentials_path: ${GCS_CREDENTIALS_PATH}
+        project_id: ${GCS_PROJECT_ID}
+        
+        # GCS optimization
+        chunk_size: "16MB"
+        timeout: 300
+    
+    # Local storage for immediate access
+    local:
+      provider: local
+      local:
+        base_path: "/var/backups/mysql-schema-sync"
+        permissions: "0600"
+        
+        # Local storage optimization
+        use_hard_links: true
+        compress_on_disk: true
+  
+  # Advanced retention policy for HA
+  retention:
+    # Global retention settings
+    max_backups: 200
+    max_age: "4320h"        # 180 days (6 months)
+    cleanup_interval: "2h"
+    
+    # Tiered retention strategy
+    tiers:
+      hot:
+        duration: "168h"    # 7 days
+        storage_providers: ["local", "primary"]
+        max_backups: 50
+      warm:
+        duration: "720h"    # 30 days
+        storage_providers: ["primary", "secondary"]
+        max_backups: 100
+      cold:
+        duration: "4320h"   # 180 days
+        storage_providers: ["secondary", "tertiary"]
+        max_backups: 50
+    
+    # Retention by backup type
+    by_type:
+      automatic:
+        max_backups: 100
+        max_age: "2160h"    # 90 days
+      manual:
+        max_backups: 50
+        max_age: "4320h"    # 180 days
+      pre_migration:
+        max_backups: 200
+        max_age: "8760h"    # 1 year
+  
+  # High-performance compression
+  compression:
+    enabled: true
+    algorithm: "zstd"
+    level: 9                # Maximum compression for storage efficiency
+    threshold: 4096         # Compress files larger than 4KB
+    
+    # Parallel compression
+    parallel_compression: true
+    compression_workers: 8
+  
+  # Enterprise-grade encryption
+  encryption:
+    enabled: true
+    algorithm: "aes256"
+    
+    # Multiple key sources for redundancy
+    primary_key:
+      source: "vault"
+      vault_path: "secret/backup/primary-key"
+    secondary_key:
+      source: "env"
+      env_var: "BACKUP_SECONDARY_KEY"
+    
+    # Key rotation and management
+    rotation_enabled: true
+    rotation_days: 30
+    key_escrow_enabled: true
+    
+    # Advanced encryption settings
+    key_derivation:
+      algorithm: "pbkdf2"
+      iterations: 200000
+      salt_length: 64
+  
+  # Comprehensive validation for HA
+  validation:
+    enabled: true
+    checksum_algorithm: "sha512"  # Stronger checksum for HA
+    validate_on_create: true
+    validate_on_restore: true
+    dry_run_validation: true
+    validation_timeout: "30m"
+    
+    # Multi-level validation
+    validation_levels:
+      basic:
+        checksum_verification: true
+        file_integrity: true
+      comprehensive:
+        schema_validation: true
+        data_consistency: true
+        cross_provider_verification: true
+      paranoid:
+        bit_level_comparison: true
+        cryptographic_verification: true
+        restore_test: true
+  
+  # Advanced logging and auditing
+  logging:
+    enable_audit_log: true
+    audit_log_path: "/var/log/mysql-schema-sync/audit.log"
+    log_level: "DEBUG"
+    log_file: "/var/log/mysql-schema-sync/backup.log"
+    
+    # Structured logging
+    log_format: "json"
+    include_stack_traces: true
+    include_performance_metrics: true
+    
+    # Log shipping for HA
+    log_shipping:
+      enabled: true
+      destinations:
+        - type: "elasticsearch"
+          endpoint: ${ELASTICSEARCH_ENDPOINT}
+          index: "mysql-backup-logs"
+        - type: "syslog"
+          endpoint: ${SYSLOG_ENDPOINT}
+          facility: "local0"
+    
+    # Log rotation for HA
+    log_rotation:
+      max_size: "500MB"
+      max_files: 20
+      compress: true
+      rotate_daily: true
+  
+  # High-performance settings
+  performance:
+    parallel_operations: true
+    max_workers: 12
+    buffer_size: "256MB"
+    streaming: true
+    
+    # Memory management
+    memory_limit: "2GB"
+    gc_threshold: "1GB"
+    
+    # I/O optimization
+    io_buffer_size: "64MB"
+    read_ahead_size: "32MB"
+    write_buffer_size: "128MB"
+    
+    # Network optimization
+    tcp_keepalive: true
+    tcp_nodelay: true
+    connection_pooling: true
+  
+  # High availability features
+  high_availability:
+    # Backup replication
+    replication:
+      enabled: true
+      min_replicas: 2
+      sync_replicas: 1
+      async_replicas: 2
+      
+      # Replication health checks
+      health_check_interval: "1m"
+      failure_threshold: 3
+      recovery_timeout: "10m"
+    
+    # Failover configuration
+    failover:
+      enabled: true
+      automatic_failover: true
+      failover_timeout: "5m"
+      
+      # Failover priorities
+      storage_priority:
+        - "primary"
+        - "secondary"
+        - "tertiary"
+        - "local"
+    
+    # Load balancing
+    load_balancing:
+      enabled: true
+      algorithm: "round_robin"
+      health_check_enabled: true
+      
+    # Circuit breaker
+    circuit_breaker:
+      enabled: true
+      failure_threshold: 5
+      recovery_timeout: "2m"
+      half_open_max_calls: 3
+
+# Migration settings for HA
+migration:
+  auto_backup: true
+  backup_description: "HA Pre-migration backup - ${DEPLOYMENT_ID}"
+  
+  # HA-specific backup tags
+  backup_tags:
+    environment: "${ENVIRONMENT}"
+    cluster: "${CLUSTER_NAME}"
+    deployment_id: "${DEPLOYMENT_ID}"
+    ha_tier: "primary"
+    backup_type: "pre_migration"
+  
+  # Safety settings for HA
+  require_confirmation: true
+  dry_run_first: true
+  
+  # Multi-stage rollback for HA
+  rollback:
+    multi_stage: true
+    stages:
+      - name: "validation"
+        timeout: "5m"
+      - name: "schema_rollback"
+        timeout: "15m"
+      - name: "verification"
+        timeout: "10m"
+    
+    auto_rollback_on_failure: false
+    rollback_timeout: "45m"
+
+# Monitoring and alerting for HA
+monitoring:
+  enabled: true
+  
+  # Comprehensive metrics
+  metrics:
+    backup_success_rate: true
+    backup_duration: true
+    backup_size: true
+    compression_ratio: true
+    replication_lag: true
+    storage_utilization: true
+    error_rates: true
+    
+    # HA-specific metrics
+    failover_count: true
+    recovery_time: true
+    availability_percentage: true
+  
+  # Health checks
+  health_checks:
+    interval: "30s"
+    timeout: "10s"
+    failure_threshold: 3
+    
+    # Multi-level health checks
+    checks:
+      - name: "storage_connectivity"
+        type: "connectivity"
+        targets: ["primary", "secondary", "tertiary"]
+      - name: "backup_integrity"
+        type: "validation"
+        frequency: "hourly"
+      - name: "replication_health"
+        type: "replication"
+        max_lag: "60s"
+  
+  # Alerting
+  alerts:
+    # Critical alerts
+    critical:
+      - backup_failure_rate > 5%
+      - storage_unavailable > 1
+      - replication_lag > 300s
+      - disk_usage > 90%
+    
+    # Warning alerts
+    warning:
+      - backup_duration > 30m
+      - compression_ratio < 50%
+      - storage_usage > 80%
+    
+    # Alert destinations
+    destinations:
+      pagerduty:
+        service_key: ${PAGERDUTY_SERVICE_KEY}
+        severity_mapping:
+          critical: "critical"
+          warning: "warning"
+      
+      slack:
+        webhook_url: ${SLACK_WEBHOOK_URL}
+        channel: "#ops-critical"
+      
+      email:
+        recipients:
+          - "ops-team@company.com"
+          - "dba-team@company.com"
+          - "on-call@company.com"
+
+# Security settings for HA
+security:
+  # Multi-factor authentication
+  mfa:
+    enabled: true
+    providers: ["totp", "yubikey"]
+  
+  # Role-based access control
+  rbac:
+    enabled: true
+    roles:
+      backup_admin:
+        permissions: ["create", "delete", "restore", "configure"]
+      backup_operator:
+        permissions: ["create", "restore", "view"]
+      backup_viewer:
+        permissions: ["view"]
+  
+  # Network security
+  network:
+    tls_enabled: true
+    tls_version: "1.3"
+    certificate_validation: true
+    
+    # IP whitelisting
+    allowed_ips:
+      - "10.0.0.0/8"
+      - "172.16.0.0/12"
+      - "192.168.0.0/16"
+  
+  # Compliance settings
+  compliance:
+    enable_gdpr_compliance: true
+    enable_hipaa_compliance: true
+    enable_sox_compliance: true
+    data_retention_days: 2555  # 7 years
+    require_encryption: true
+    require_audit_log: true
+    require_access_logging: true
+
+# Disaster recovery settings
+disaster_recovery:
+  enabled: true
+  
+  # Cross-region replication
+  cross_region:
+    enabled: true
+    regions:
+      - "us-west-2"
+      - "us-east-1"
+      - "eu-west-1"
+    
+    # Replication settings
+    sync_frequency: "1h"
+    retention_days: 90
+  
+  # Recovery procedures
+  recovery:
+    rto: "4h"               # Recovery Time Objective
+    rpo: "1h"               # Recovery Point Objective
+    
+    # Automated recovery
+    automated_recovery: true
+    recovery_validation: true
+    
+    # Recovery testing
+    test_frequency: "monthly"
+    test_environments: ["staging", "dr-test"]

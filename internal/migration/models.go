@@ -1,6 +1,9 @@
 package migration
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -252,6 +255,40 @@ func (mp *MigrationPlan) GetStatementsByTable(tableName string) []MigrationState
 		}
 	}
 	return statements
+}
+
+// Hash calculates a SHA-256 hash of the migration plan for identification
+func (mp *MigrationPlan) Hash() string {
+	// Create a deterministic representation of the plan
+	data := struct {
+		Statements []MigrationStatement `json:"statements"`
+		Summary    MigrationSummary     `json:"summary"`
+	}{
+		Statements: mp.Statements,
+		Summary:    mp.Summary,
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		// Fallback to a simple hash if JSON marshaling fails
+		return mp.simpleHash()
+	}
+
+	hash := sha256.Sum256(jsonData)
+	return hex.EncodeToString(hash[:])
+}
+
+// simpleHash creates a simple hash based on statement count and types
+func (mp *MigrationPlan) simpleHash() string {
+	var builder strings.Builder
+	builder.WriteString(fmt.Sprintf("statements:%d", len(mp.Statements)))
+
+	for _, stmt := range mp.Statements {
+		builder.WriteString(fmt.Sprintf("|%s:%s", stmt.Type, stmt.TableName))
+	}
+
+	hash := sha256.Sum256([]byte(builder.String()))
+	return hex.EncodeToString(hash[:])
 }
 
 // String returns a string representation of the migration plan

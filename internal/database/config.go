@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"mysql-schema-sync/internal/config"
 )
 
 // DatabaseConfig holds the configuration parameters for database connection
@@ -18,11 +20,12 @@ type DatabaseConfig struct {
 
 // CLIConfig holds the complete CLI configuration including source and target databases
 type CLIConfig struct {
-	SourceDB    DatabaseConfig `mapstructure:"source" yaml:"source"`
-	TargetDB    DatabaseConfig `mapstructure:"target" yaml:"target"`
-	DryRun      bool           `mapstructure:"dry_run" yaml:"dry_run"`
-	Verbose     bool           `mapstructure:"verbose" yaml:"verbose"`
-	AutoApprove bool           `mapstructure:"auto_approve" yaml:"auto_approve"`
+	SourceDB    DatabaseConfig      `mapstructure:"source" yaml:"source"`
+	TargetDB    DatabaseConfig      `mapstructure:"target" yaml:"target"`
+	DryRun      bool                `mapstructure:"dry_run" yaml:"dry_run"`
+	Verbose     bool                `mapstructure:"verbose" yaml:"verbose"`
+	AutoApprove bool                `mapstructure:"auto_approve" yaml:"auto_approve"`
+	Backup      config.BackupConfig `mapstructure:"backup" yaml:"backup"`
 }
 
 // Validate checks if the database configuration has all required parameters
@@ -72,6 +75,10 @@ func (cc *CLIConfig) Validate() error {
 		return fmt.Errorf("target database: %w", err)
 	}
 
+	if err := cc.Backup.Validate(); err != nil {
+		return fmt.Errorf("backup configuration: %w", err)
+	}
+
 	return nil
 }
 
@@ -92,4 +99,7 @@ func (cc *CLIConfig) SetDefaults() {
 	if cc.TargetDB.Timeout == 0 {
 		cc.TargetDB.Timeout = 30 * time.Second
 	}
+
+	// Set backup defaults
+	cc.Backup.SetDefaults()
 }

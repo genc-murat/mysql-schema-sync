@@ -13,6 +13,52 @@
   dry_run: false
   verbose: false
   auto_approve: false
+  backup:
+    enabled: false           # Enable automatic backup before migrations
+    storage:
+      provider: local        # Storage provider (local, s3, azure, gcs)
+      local:
+        base_path: ./backups # Local backup storage path
+        permissions: "0755"  # Directory permissions
+      # s3:                  # Uncomment for S3 storage
+      #   bucket: my-backups
+      #   region: us-east-1
+      #   access_key: ""     # Or use environment variables
+      #   secret_key: ""
+      # azure:               # Uncomment for Azure storage
+      #   account_name: ""
+      #   account_key: ""
+      #   container_name: backups
+      # gcs:                 # Uncomment for Google Cloud Storage
+      #   bucket: my-backups
+      #   credentials_path: /path/to/credentials.json
+      #   project_id: my-project
+    retention:
+      max_backups: 10        # Maximum number of backups to retain
+      max_age: ""            # Maximum age (e.g., "30d", "720h")
+      cleanup_interval: 24h  # How often to run cleanup
+      keep_daily: 0          # Daily backups to keep
+      keep_weekly: 0         # Weekly backups to keep
+      keep_monthly: 0        # Monthly backups to keep
+    compression:
+      enabled: false         # Enable backup compression
+      algorithm: gzip        # Compression algorithm (gzip, lz4, zstd)
+      level: 6               # Compression level
+      threshold: 1024        # Minimum size to compress (bytes)
+    encryption:
+      enabled: false         # Enable backup encryption
+      key_source: env        # Key source (env, file, external)
+      key_env_var: MYSQL_SCHEMA_SYNC_BACKUP_ENCRYPTION_KEY
+      key_path: ""           # Path to key file (if key_source is file)
+      rotation_enabled: false # Enable key rotation
+      rotation_days: 90      # Days between key rotations
+    validation:
+      enabled: true          # Enable backup validation
+      checksum_algorithm: sha256 # Checksum algorithm (sha256, md5)
+      validate_on_create: true   # Validate after creating backup
+      validate_on_restore: true  # Validate before restoring backup
+      validation_timeout: 5m     # Validation timeout
+      dry_run_validation: true   # Enable dry-run validation
   display:
     color_enabled: true      # Enable colorized output
     theme: dark              # Color theme (dark, light, high-contrast, auto)

@@ -20,7 +20,7 @@ A powerful CLI tool for synchronizing MySQL database schemas. Compare two MySQL 
 
 ### Download Pre-built Binaries
 
-Download the latest release for your platform from the [releases page](https://github.com/your-org/mysql-schema-sync/releases).
+Download the latest release for your platform from the [releases page](https://github.com/genc-murat/mysql-schema-sync/releases).
 
 ### Build from Source
 
@@ -29,7 +29,7 @@ Requirements:
 - MySQL client libraries (for testing)
 
 ```bash
-git clone https://github.com/your-org/mysql-schema-sync.git
+git clone https://github.com/genc-murat/mysql-schema-sync.git
 cd mysql-schema-sync
 make build
 ```
@@ -37,7 +37,7 @@ make build
 ### Using Go Install
 
 ```bash
-go install github.com/your-org/mysql-schema-sync@latest
+go install github.com/genc-murat/mysql-schema-sync@latest
 ```
 
 ## Quick Start
@@ -522,16 +522,16 @@ export MYSQL_SCHEMA_SYNC_THEME=high-contrast
 
 ### Getting Help
 
-- Check the [documentation](https://github.com/your-org/mysql-schema-sync/wiki)
-- Review [common issues](https://github.com/your-org/mysql-schema-sync/issues)
-- Open a [new issue](https://github.com/your-org/mysql-schema-sync/issues/new) for bugs or feature requests
+- Check the [documentation](https://github.com/genc-murat/mysql-schema-sync/wiki)
+- Review [common issues](https://github.com/genc-murat/mysql-schema-sync/issues)
+- Open a [new issue](https://github.com/genc-murat/mysql-schema-sync/issues/new) for bugs or feature requests
 
 ## Development
 
 ### Building from Source
 
 ```bash
-git clone https://github.com/your-org/mysql-schema-sync.git
+git clone https://github.com/genc-murat/mysql-schema-sync.git
 cd mysql-schema-sync
 make deps
 make build

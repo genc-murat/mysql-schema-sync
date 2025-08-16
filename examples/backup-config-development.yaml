@@ -1,0 +1,66 @@
+# Development Environment Backup Configuration
+# This configuration is optimized for development environments where
+# speed and simplicity are prioritized over durability and security.
+
+database:
+  host: localhost
+  port: 3306
+  username: dev_user
+  password: dev_password
+  database: development_db
+
+backup:
+  enabled: true
+  
+  # Local storage for development
+  storage:
+    provider: local
+    local:
+      base_path: "./dev-backups"
+      permissions: "0755"
+  
+  # Minimal retention for development
+  retention:
+    max_backups: 5
+    max_age: "24h"          # Keep backups for 1 day only
+    cleanup_interval: "1h"
+    keep_daily: 3
+    keep_weekly: 0          # No weekly retention
+    keep_monthly: 0         # No monthly retention
+  
+  # Fast compression for quick backups
+  compression:
+    enabled: true
+    algorithm: "lz4"        # Fastest compression
+    level: 1                # Lowest compression level for speed
+    threshold: 1024         # Compress files larger than 1KB
+  
+  # No encryption for development (not recommended for production)
+  encryption:
+    enabled: false
+  
+  # Basic validation
+  validation:
+    enabled: true
+    checksum_algorithm: "md5"  # Faster than SHA256
+    validate_on_create: true
+    validate_on_restore: false # Skip for speed
+    dry_run_validation: false
+    validation_timeout: "30s"
+  
+  # Minimal logging
+  logging:
+    enable_audit_log: false
+    log_level: "INFO"
+    log_file: "./logs/backup-dev.log"
+
+# Migration settings
+migration:
+  auto_backup: true           # Always create backup before migration
+  backup_description: "Auto backup before migration in development"
+  
+# Display settings for development
+display:
+  show_progress: true
+  verbose: true
+  color_output: true
