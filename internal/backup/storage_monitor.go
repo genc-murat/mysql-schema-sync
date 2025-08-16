@@ -580,8 +580,9 @@ func (sm *storageMonitor) GetStorageUsageByDatabase(ctx context.Context) (map[st
 		// Calculate storage growth (simplified)
 		if !oldestTime.IsZero() && !newestTime.IsZero() && newestTime.After(oldestTime) {
 			duration := newestTime.Sub(oldestTime)
-			if duration > 0 {
-				dailyGrowth := totalSize / int64(duration.Hours()/24)
+			days := duration.Hours() / 24
+			if days >= 1 {
+				dailyGrowth := totalSize / int64(days)
 				usage.StorageGrowth = &StorageGrowthInfo{
 					DailyGrowth:   dailyGrowth,
 					WeeklyGrowth:  dailyGrowth * 7,
